@@ -1,0 +1,13 @@
+{
+  "name": "Global Smart Recruitment",
+  "short_name": "GSR",
+  "description": "AI-powered student recruitment platform",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#0A2540",
+  "background_color": "#ffffff",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
