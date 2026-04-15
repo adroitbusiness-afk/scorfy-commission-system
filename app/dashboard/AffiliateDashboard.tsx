@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
+import FileUploadModal from '@/components/FileUploadModal';
 import {
   Copy, Share2, DollarSign, Users, MousePointerClick,
   RefreshCw, CheckCircle, Clock, AlertCircle, Trophy, Award,
@@ -104,12 +105,6 @@ class OfflineQueue {
 }
 
 const offlineQueue = new OfflineQueue();
-
-// ============================================================================
-// File Upload Modal (supports CSV, Excel, TXT, Images)
-// ============================================================================
-}
-
 
 // ============================================================================
 // Sidebar Component (white theme)

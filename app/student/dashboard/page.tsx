@@ -13,7 +13,55 @@ import {
 import { FaFacebook, FaTwitter, FaLinkedin, FaEnvelope } from 'react-icons/fa';
 
 // -------------------- Offline Queue (unchanged) --------------------
-class OfflineQueue { /* same as before */ }
+class OfflineQueue {
+  private db: IDBDatabase | null = null;
+  private readonly DB_NAME = 'student_offline';
+  private readonly STORE_NAME = 'events';
+
+  async init(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.DB_NAME, 1);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        this.db = request.result;
+        resolve();
+      };
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+          db.createObjectStore(this.STORE_NAME, { autoIncrement: true });
+        }
+      };
+    });
+  }
+
+  async addEvent(event: any): Promise<void> {
+    if (!this.db) await this.init();
+    const tx = this.db!.transaction([this.STORE_NAME], 'readwrite');
+    const store = tx.objectStore(this.STORE_NAME);
+    store.add(event);
+    return new Promise((resolve) => { tx.oncomplete = () => resolve(); });
+  }
+
+  async getEvents(): Promise<any[]> {
+    if (!this.db) await this.init();
+    return new Promise((resolve) => {
+      const tx = this.db!.transaction([this.STORE_NAME], 'readonly');
+      const store = tx.objectStore(this.STORE_NAME);
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result);
+    });
+  }
+
+  async clearEvents(): Promise<void> {
+    if (!this.db) await this.init();
+    const tx = this.db!.transaction([this.STORE_NAME], 'readwrite');
+    const store = tx.objectStore(this.STORE_NAME);
+    store.clear();
+    return new Promise((resolve) => { tx.oncomplete = () => resolve(); });
+  }
+}
+
 const offlineQueue = new OfflineQueue();
 
 // -------------------- AI Helper Functions (unchanged) --------------------
@@ -89,8 +137,18 @@ export default function NexusDashboard() {
     { title: 'Case Study: Industry Trends', type: 'Reading' },
   ];
 
-  // ---------- Offline sync (unchanged) ----------
-  useEffect(() => { /* same as before */ }, []);
+  // ---------- Offline sync ----------
+  useEffect(() => {
+    const handleOnline = () => setOnline(true);
+    const handleOffline = () => setOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    offlineQueue.init();
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // ---------- Points & Achievement ----------
   const addPoints = async (reason: string, pts: number) => {
@@ -120,20 +178,25 @@ export default function NexusDashboard() {
     await addPoints('Daily check-in', 10);
   };
 
-  // ---------- Load Programs & Application ----------
-  const loadPrograms = useCallback(async () => {
+  // ---------- Load Programs (FIXED) ----------
+  // ---------- Load Programs (FIXED) ----------
+const loadPrograms = useCallback(async () => {
   setProgramsLoading(true);
   const { data } = await supabase
     .from('programs')
     .select('id, program_name as title, fee_structure, duration, is_active as status');
-  // Transform fee_structure JSON to a numeric fee
-  const transformed = (data || []).map(p => ({
-    ...p,
-    fee: p.fee_structure?.total || 0,
-  }));
+  
+  // Safely transform: filter out non‑objects and cast to any
+  const transformed = (data || [])
+    .filter(p => p && typeof p === 'object')
+    .map(p => ({
+      ...(p as any),
+      fee: (p as any).fee_structure?.total || 0,
+    }));
+  
   setPrograms(transformed);
   setProgramsLoading(false);
-}, []);
+}, []);;
 
   const createApplication = async () => {
     if (!selectedProgramId) {
@@ -406,10 +469,51 @@ export default function NexusDashboard() {
     return () => clearInterval(interval);
   }, []);
 
-  // ---------- Referral Helpers (unchanged) ----------
-  const copyShortLink = () => { /* same */ };
-  const shareLink = async (platform: string) => { /* same */ };
-  const generateStatus = () => { /* same */ };
+  // ---------- Referral Helpers ----------
+  const copyShortLink = () => {
+    navigator.clipboard.writeText(shortLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+    if (online && user) {
+      supabase.from('student_referral_clicks').insert({ student_id: user.id, clicked_at: new Date().toISOString(), referrer_url: 'copy_share' });
+      addPoints('Referral click', 5);
+    } else if (!online) {
+      offlineQueue.addEvent({ type: 'click', url: 'copy_share', timestamp: new Date().toISOString() });
+    }
+  };
+
+  const shareLink = async (platform: string) => {
+    const text = `Join me on our student rewards program! Use my link: ${shortLink}`;
+    const urls: Record<string, string> = {
+      whatsapp: `https://wa.me/?text=${encodeURIComponent(text)}`,
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shortLink)}`,
+      twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`,
+      linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shortLink)}`,
+      email: `mailto:?subject=Student Rewards&body=${encodeURIComponent(text)}`,
+    };
+    if (urls[platform]) window.open(urls[platform], '_blank');
+    if (online && user) await addPoints('Social share', 20);
+    else if (!online) await offlineQueue.addEvent({ type: 'share', timestamp: new Date().toISOString() });
+  };
+
+  const generateStatus = () => {
+    setGenerating(true);
+    setTimeout(() => {
+      const status = generateWhatsAppStatus().replace('{link}', shortLink);
+      setWhatsappStatus(status);
+      setGenerating(false);
+    }, 500);
+  };
+
+  const generateWhatsAppStatus = (): string => {
+    const templates = [
+      "🚀 Join me on our student rewards program! Use my referral link: {link}",
+      "💰 Earn points and rewards by referring friends. Sign up with my link today!",
+      "🎓 Study smart and earn rewards. Join using my link and start earning points.",
+      "🔥 Limited time: Double points for referrals! Join now using my link.",
+    ];
+    return templates[Math.floor(Math.random() * templates.length)];
+  };
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW' }).format(val);
   const levelProgress = points.level ? ((points.points % 500) / 500) * 100 : 0;
@@ -482,8 +586,23 @@ export default function NexusDashboard() {
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-black' : 'bg-gray-100'} transition-colors duration-500 overflow-x-hidden`}>
-      {/* Achievement Toast, mobile menu, dark mode toggle (same as before) */}
-      {/* ... keep existing JSX for background particles, toast, mobile menu, toggle ... */}
+      {/* Achievement Toast */}
+      {showAchievement && (
+        <div className="fixed top-20 right-4 z-50 bg-gradient-to-r from-cyan-500 to-purple-600 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 animate-bounce">
+          <Zap className="w-5 h-5" />
+          <div>
+            <p className="font-bold">+{showAchievement.points} points!</p>
+            <p className="text-xs">{showAchievement.message}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile menu button */}
+      <div className="lg:hidden fixed top-4 left-4 z-50">
+        <button onClick={() => setSidebarOpen(true)} className="p-2 bg-white/10 backdrop-blur rounded-lg border border-white/20">
+          <Menu size={20} className="text-white" />
+        </button>
+      </div>
 
       {/* Sidebar */}
       <aside className={`fixed lg:sticky top-0 z-40 w-72 h-screen ${darkMode ? 'bg-black/80 backdrop-blur-xl border-r border-white/10' : 'bg-white/80 backdrop-blur-xl border-r border-gray-200'} shadow-2xl transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
@@ -545,7 +664,7 @@ export default function NexusDashboard() {
       {/* Main Content */}
       <main className="lg:ml-72 p-6 transition-all duration-300">
         <div className="max-w-7xl mx-auto">
-          {/* Header Bar (unchanged) */}
+          {/* Header Bar */}
           <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
             <div className="flex items-center gap-4">
               <div className="relative group">
@@ -612,7 +731,7 @@ export default function NexusDashboard() {
           {/* Dashboard Tab (only shows after application started) */}
           {activeTab === 'dashboard' && (
             <div className="space-y-6">
-              {/* AI Greeting + XP Orb (same as before) */}
+              {/* AI Greeting + XP Orb */}
               <div className="flex flex-col lg:flex-row gap-6">
                 <div className="flex-1">
                   <div className={`${darkMode ? 'bg-white/5' : 'bg-white/70'} backdrop-blur-xl rounded-2xl p-6 border border-white/10`}>

@@ -142,7 +142,7 @@ const generateWhatsAppStatus = (): string => {
 // ============================================================================
 // Sub-components (Sidebar, TemplateLibrary, FileUploadModal)
 // ============================================================================
-function Sidebar({ recruiter, sidebarOpen, notifications, activeSection, onSectionChange, onLogout }: any) {
+function Sidebar({ recruiter, sidebarOpen, notifications, activeSection, onSectionChange, onLogout, onToggleSidebar }: any) {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'quick-admission', label: 'Quick Admission', icon: FileText },
@@ -380,7 +380,7 @@ function FileUploadModal({ isOpen, onClose, onLeadsExtracted, institutions, sele
             </select>
           </div>
           <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-            <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileChange} ... />
+            <input type="file" accept=".csv,.xlsx,.xls,.jpg,.jpeg,.png,.webp" onChange={handleFileChange} ref={fileInputRef} className="hidden" id="import-file" />
             <label htmlFor="import-file" className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg">
               <Upload size={18} /> Choose File
             </label>
@@ -459,14 +459,14 @@ export default function RecruiterDashboard() {
   // Reset page on filter change
   useEffect(() => { setCurrentPage(1); }, [filterStatus, filterPriority, searchTerm, sortBy, sortOrder]);
 
-  // Service Worker Background Sync (PWA offline support)
-  useEffect(() => {
-    if ('serviceWorker' in navigator && 'SyncManager' in window) {
-      navigator.serviceWorker.ready.then(reg => {
-        reg.sync.register('sync-leads').catch(err => console.log('Sync registration failed', err));
-      });
-    }
-  }, []);
+ // Service Worker Background Sync (PWA offline support)
+useEffect(() => {
+  if ('serviceWorker' in navigator && 'SyncManager' in window) {
+    navigator.serviceWorker.ready.then(reg => {
+      (reg as any).sync.register('sync-leads').catch((err: any) => console.log('Sync registration failed', err));
+    });
+  }
+}, []);
 
   // Offline sync (only when recruiter exists)
   useEffect(() => {
@@ -645,32 +645,35 @@ ${reportData.nextSteps.map((s, i) => `${i+1}. ${s}`).join('\n')}
 
   // Action handlers with tracking
   const sendWhatsApp = async (lead: AnalyzedLead) => {
-    const message = formatTemplateMessage(selectedTemplate, lead);
-    const phone = lead.phone?.replace(/\D/g, '');
-    if (!phone) return;
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
-    await logAction(lead.id, 'whatsapp', 'sent', `Message: ${message.substring(0, 100)}`);
-    if (lead.status === 'new' && lead.id) await updateLeadStatus(lead.id, 'contacted', 'sent_whatsapp');
-    loadData();
-  };
+  if (!lead.id) return; // safety guard
+  const message = formatTemplateMessage(selectedTemplate, lead);
+  const phone = lead.phone?.replace(/\D/g, '');
+  if (!phone) return;
+  const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  window.open(url, '_blank');
+  await logAction(lead.id, 'whatsapp', 'sent', `Message: ${message.substring(0, 100)}`);
+  if (lead.status === 'new') await updateLeadStatus(lead.id, 'contacted', 'sent_whatsapp');
+  loadData();
+};
 
-  const sendEmail = async (lead: AnalyzedLead) => {
-    const subject = messageTemplates[selectedTemplate]?.title || 'Enrollment Steps';
-    const body = formatTemplateMessage(selectedTemplate, lead);
-    window.location.href = `mailto:${lead.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    await logAction(lead.id, 'email', 'sent', `Email: ${body.substring(0, 100)}`);
-    if (lead.status === 'new' && lead.id) updateLeadStatus(lead.id, 'contacted', 'sent_email');
-  };
+const sendEmail = async (lead: AnalyzedLead) => {
+  if (!lead.id) return;
+  const subject = messageTemplates[selectedTemplate]?.title || 'Enrollment Steps';
+  const body = formatTemplateMessage(selectedTemplate, lead);
+  window.location.href = `mailto:${lead.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  await logAction(lead.id, 'email', 'sent', `Email: ${body.substring(0, 100)}`);
+  if (lead.status === 'new') await updateLeadStatus(lead.id, 'contacted', 'sent_email');
+};
 
-  const makeCall = (lead: AnalyzedLead) => {
-    const phone = lead.phone?.replace(/\D/g, '');
-    if (phone?.startsWith('260') && lead.id) {
-      window.location.href = `tel:${phone}`;
-      logAction(lead.id, 'call', 'sent', 'Call initiated');
-      updateLeadStatus(lead.id, 'contacted', 'made_call');
-    }
-  };
+const makeCall = (lead: AnalyzedLead) => {
+  if (!lead.id) return;
+  const phone = lead.phone?.replace(/\D/g, '');
+  if (phone?.startsWith('260')) {
+    window.location.href = `tel:${phone}`;
+    logAction(lead.id, 'call', 'sent', 'Call initiated');
+    updateLeadStatus(lead.id, 'contacted', 'made_call');
+  }
+};
 
   const updateLeadStatus = async (leadId: string, newStatus: string, action?: string) => {
     try {
@@ -979,6 +982,7 @@ ${reportData.nextSteps.map((s, i) => `${i+1}. ${s}`).join('\n')}
         activeSection={activeSection}
         onSectionChange={handleSectionChange}
         onLogout={async () => { await supabase.auth.signOut(); router.push('/login'); }}
+        onToggleSidebar={setSidebarOpen}
       />
 
       <div className="lg:ml-72 min-h-screen">

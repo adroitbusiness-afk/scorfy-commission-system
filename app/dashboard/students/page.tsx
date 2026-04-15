@@ -6,7 +6,7 @@ import { format } from 'date-fns';
 import {
   Copy, Share2, DollarSign, Users, MousePointerClick,
   RefreshCw, CheckCircle, Clock, AlertCircle, Trophy, Award,
-  Loader2, Linkedin, Mail, Phone, Sparkles, TrendingUp, Calendar, Star
+    Loader2, Mail, Phone, Sparkles, TrendingUp, Calendar, Star
 } from 'lucide-react';
 import { FaFacebook, FaTwitter, FaLinkedin } from 'react-icons/fa';
 
@@ -292,7 +292,6 @@ export default function StudentsPage() {
       whatsapp: `https://wa.me/?text=${encodeURIComponent(text)}`,
       facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shortLink)}`,
       twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`,
-      linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shortLink)}`,
       email: `mailto:?subject=Student Rewards&body=${encodeURIComponent(text)}`,
     };
     if (urls[platform]) window.open(urls[platform], '_blank');

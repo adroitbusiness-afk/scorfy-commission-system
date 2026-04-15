@@ -1,7 +1,6 @@
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
 import Papa from 'papaparse';
-import Tesseract from 'tesseract.js';
 
 // ========================== TYPES ==========================
 export interface ExtractedLead {
@@ -22,19 +21,6 @@ export interface ExtractedLead {
   whatsappMessage?: string;
   smsMessage?: string;
   emailMessage?: string;
-}
-
-// ========================== OCR ==========================
-export async function extractTextFromImage(file: File): Promise<string> {
-  // Use node-friendly buffer path to avoid FileReader issues in server runtimes
-  const arrayBuffer = await file.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-
-  const { data } = await Tesseract.recognize(buffer, 'eng', {
-    logger: () => {},
-  });
-
-  return data.text || '';
 }
 
 // ========================== HELPERS ==========================
@@ -371,7 +357,7 @@ export async function extractLeadsFromFile(file: File): Promise<ExtractedLead[]>
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        text += content.items.map((i: any) => i.str).join(' ') + '\n';
+        text += content.items.map((item: any) => item.str).join(' ') + '\n';
       }
 
       return extractLeadsFromText(text);
@@ -383,21 +369,13 @@ export async function extractLeadsFromFile(file: File): Promise<ExtractedLead[]>
       return extractLeadsFromText(result.value);
     }
 
-    case 'jpg':
-    case 'jpeg':
-    case 'png':
-    case 'webp': {
-      const text = await extractTextFromImage(file);
-      return extractLeadsFromText(text);
-    }
-
     case 'txt': {
       const text = await file.text();
       return extractLeadsFromText(text);
     }
 
     default:
-      throw new Error('Unsupported file type');
+      throw new Error('Unsupported file type. Please upload CSV, Excel, PDF, DOCX, or TXT.');
   }
 }
 

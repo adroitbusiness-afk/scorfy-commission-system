@@ -3,13 +3,14 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
+import { User } from '@supabase/supabase-js';
 
 export default function NDAPage() {
   const router = useRouter();
   const [signature, setSignature] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -21,6 +22,11 @@ export default function NDAPage() {
   const handleSubmit = async () => {
     if (!agreed || !signature) {
       alert('Please agree and provide your full name as signature');
+      return;
+    }
+    if (!user) {
+      alert('User not authenticated. Please log in again.');
+      router.push('/signup');
       return;
     }
     setLoading(true);

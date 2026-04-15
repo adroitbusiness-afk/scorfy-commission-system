@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
         email: student_email || '',
         phone: student_phone || '',
         notes: `${program} - ${mode_of_study} - National ID: ${national_id || 'N/A'}`,
-        country: null,
+        country: undefined,
       });
 
       // Store tags as a plain comma‑separated string (not PostgreSQL array)
