@@ -380,7 +380,7 @@ function FileUploadModal({ isOpen, onClose, onLeadsExtracted, institutions, sele
             </select>
           </div>
           <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-            <input type="file" accept=".csv,.xlsx,.xls,.jpg,.jpeg,.png,.webp" onChange={handleFileChange} ref={fileInputRef} className="hidden" id="import-file" />
+            <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileChange} ... />
             <label htmlFor="import-file" className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg">
               <Upload size={18} /> Choose File
             </label>

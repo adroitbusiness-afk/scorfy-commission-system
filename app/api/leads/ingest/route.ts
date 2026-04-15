@@ -1,78 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { analyzeLead } from '@/lib/aiLeadEngine';
-import Tesseract from 'tesseract.js';
+import Papa from 'papaparse';
+import * as XLSX from 'xlsx';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, serviceKey);
 
-type IncomingLead = {
-  name?: string;
-  email?: string;
-  phone?: string;
-  country?: string;
-  program?: string;
-  notes?: string;
-  institution_id?: string | null;
-  source?: string;
-};
-
-// Helper: extract phone numbers and messages from WhatsApp text
-function extractWhatsAppLeads(text: string): IncomingLead[] {
-  const lines = text.split(/\r?\n/);
-  const leadsMap = new Map<string, IncomingLead>();
-  let currentPhone = '';
-  let currentMessage = '';
-
-  for (const line of lines) {
-    const phoneMatch = line.match(/(\+\d{1,3}[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,4})/);
-    if (phoneMatch) {
-      if (currentPhone && currentMessage) {
-        leadsMap.set(currentPhone, {
-          phone: currentPhone,
-          name: currentPhone,
-          notes: currentMessage.trim(),
-          source: 'WhatsApp OCR',
-        });
-      }
-      currentPhone = phoneMatch[1].replace(/\s/g, '');
-      currentMessage = '';
-    } else if (currentPhone && line.trim()) {
-      currentMessage += ' ' + line.trim();
-    }
-  }
-  if (currentPhone && currentMessage) {
-    leadsMap.set(currentPhone, {
-      phone: currentPhone,
-      name: currentPhone,
-      notes: currentMessage.trim(),
-      source: 'WhatsApp OCR',
-    });
-  }
-  if (leadsMap.size === 0) {
-    // If no phone numbers, treat each line as a separate lead
-    for (const line of lines) {
-      if (line.trim()) {
-        leadsMap.set(line.trim(), {
-          name: line.trim(),
-          notes: line.trim(),
-          source: 'Text OCR',
-        });
-      }
-    }
-  }
-  return Array.from(leadsMap.values());
-}
-
 export async function POST(req: NextRequest) {
   try {
     const contentType = req.headers.get('content-type') || '';
-    let leads: IncomingLead[] = [];
+    let leads: any[] = [];
     let institutionId: string | null = null;
     let preferredRecruiter: string | null = null;
 
-    // Handle multipart/form-data (image upload)
+    // Handle multipart/form-data (file upload)
     if (contentType.includes('multipart/form-data')) {
       const formData = await req.formData();
       const file = formData.get('file') as File;
@@ -83,11 +26,39 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
       }
 
+      const fileName = file.name;
+      const fileType = fileName.split('.').pop()?.toLowerCase();
       const buffer = Buffer.from(await file.arrayBuffer());
-      const { data: { text } } = await Tesseract.recognize(buffer, 'eng', {
-        logger: (m) => console.log(m),
-      });
-      leads = extractWhatsAppLeads(text);
+
+      if (fileType === 'csv') {
+        const text = await file.text();
+        const { data } = Papa.parse(text, { header: true, skipEmptyLines: true });
+        leads = data.map((row: any) => ({
+          name: row.Name || row.name || row['Student Name'] || 'Unknown',
+          email: row.Email || row.email || '',
+          phone: row.Phone || row.phone || '',
+          program: row.Program || row.program || 'Not specified',
+          country: row.Country || row.country || null,
+          notes: 'Imported from CSV',
+        }));
+      } else if (fileType === 'xlsx' || fileType === 'xls') {
+        const workbook = XLSX.read(buffer, { type: 'buffer' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet);
+        leads = rows.map((row: any) => ({
+          name: row.Name || row.name || row['Student Name'] || 'Unknown',
+          email: row.Email || row.email || '',
+          phone: row.Phone || row.phone || '',
+          program: row.Program || row.program || 'Not specified',
+          country: row.Country || row.country || null,
+          notes: 'Imported from Excel',
+        }));
+      } else {
+        return NextResponse.json(
+          { error: 'Unsupported file type. Please upload CSV or Excel files.' },
+          { status: 400 }
+        );
+      }
     } 
     // Handle JSON (existing logic)
     else {
@@ -124,7 +95,6 @@ export async function POST(req: NextRequest) {
         preferredRecruiter ||
         (recruiters.length > 0 ? recruiters[rrIndex++ % recruiters.length] : null);
 
-      // Check existing lead by phone or email
       let existingId: string | null = null;
       if (phone || email) {
         const orFilters = [];
@@ -157,12 +127,12 @@ export async function POST(req: NextRequest) {
         institution_id: raw.institution_id ?? institutionId,
         assigned_recruiter: assignedRecruiter,
         status: 'new',
-        source: raw.source || (contentType.includes('multipart') ? 'Image OCR' : 'import'),
+        source: raw.source || (contentType.includes('multipart') ? 'CSV/Excel Import' : 'import'),
         lead_score: analysis.score,
         intent: analysis.intent,
         priority: analysis.priority,
         recommended_action: analysis.action,
-        tags: (analysis.tags || []).join(','), // store as comma-separated string
+        tags: (analysis.tags || []).join(','),
         updated_at: now,
         created_at: now,
       };
