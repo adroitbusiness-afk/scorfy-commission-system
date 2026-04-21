@@ -1,10 +1,10 @@
+// app/api/generate-institution-acceptance-letter/[applicationId]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import jsPDF from 'jspdf';
+import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'; // simpler alternative to jsPDF
+// or use @react-pdf/renderer – I'll use pdf-lib for this example
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const dynamic = 'force-dynamic';
 
 export async function POST(
   req: NextRequest,
@@ -13,140 +13,112 @@ export async function POST(
   try {
     const { applicationId } = await params;
 
-    // Get institution application details
-    const { data: application, error: appError } = await supabase
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    // Fetch application with correct joins
+    const { data: application, error: appError } = await supabaseAdmin
       .from('institution_applications')
       .select(`
         *,
-        leads!inner(
-          name,
-          email,
-          institution_programs(program_name, fee_per_year)
-        ),
-        institutions!inner(
-          institution_name,
-          institution_code
-        )
+        leads:lead_id (name, email),
+        institution_programs:program_id (program_name, fee_per_year),
+        institutions:institution_id (institution_name, institution_code)
       `)
       .eq('id', applicationId)
       .single();
 
     if (appError || !application) {
+      console.error('Application fetch error:', appError);
       return NextResponse.json({ error: 'Application not found' }, { status: 404 });
     }
 
-    const program = application.leads.institution_programs;
+    const program = application.institution_programs;
     const institution = application.institutions;
+    const student = application.leads;
 
-    // Generate PDF
-    const doc = new jsPDF();
+    // Create PDF using pdf-lib (runs on Node.js without canvas)
+    const pdfDoc = await PDFDocument.create();
+    const page = pdfDoc.addPage([600, 800]);
+    const { height } = page.getSize();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+    let y = height - 50;
+
+    // Helper to draw text
+    const drawText = (text: string, size: number, isBold = false, x = 50) => {
+      const usedFont = isBold ? boldFont : font;
+      page.drawText(text, { x, y, size, font: usedFont });
+      y -= size + 4;
+    };
 
     // Header
-    doc.setFontSize(20);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`${institution.institution_name}`, 105, 30, { align: 'center' });
+    drawText(institution.institution_name, 18, true, 50);
+    drawText('OFFICIAL ACCEPTANCE LETTER', 16, true, 50);
+    y -= 10;
+    drawText(`Date: ${new Date().toLocaleDateString('en-GB')}`, 12);
+    y -= 10;
+    drawText(`Dear ${student.name},`, 12);
+    y -= 8;
+    drawText(`We are pleased to inform you that your application to ${institution.institution_name} has been approved.`, 12);
+    y -= 12;
+    drawText('Admission Details:', 12, true);
+    drawText(`Program: ${program.program_name}`, 12);
+    drawText(`Annual Tuition Fee: K${program.fee_per_year?.toLocaleString() || 'TBD'}`, 12);
+    drawText(`Semester Fee: K${((program.fee_per_year || 0) / 2).toLocaleString()}`, 12);
+    y -= 10;
+    drawText('Payment Schedule:', 12, true);
+    drawText('- Semester 1: Due within 2 weeks of registration', 11);
+    drawText('- Semester 2: Due before start of second semester', 11);
+    y -= 10;
+    drawText('Important Notes:', 12, true);
+    drawText('1. Conditional upon meeting all admission requirements.', 11);
+    drawText('2. Complete registration and fee payment to secure your place.', 11);
+    drawText('3. Contact the admissions office for any questions.', 11);
+    y -= 15;
+    drawText('Congratulations on your acceptance!', 12);
+    y -= 20;
+    drawText('Sincerely,', 12);
+    y -= 30;
+    drawText(`${institution.institution_name} Admissions Office`, 11);
 
-    doc.setFontSize(16);
-    doc.text('OFFICIAL ACCEPTANCE LETTER', 105, 45, { align: 'center' });
+    const pdfBytes = await pdfDoc.save();
+    const pdfBuffer = Buffer.from(pdfBytes);
 
-    // Letter content
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'normal');
-
-    let y = 70;
-    const lineHeight = 7;
-
-    doc.text(`Date: ${new Date().toLocaleDateString('en-GB')}`, 20, y);
-    y += lineHeight * 2;
-
-    doc.text(`Dear ${application.leads.name},`, 20, y);
-    y += lineHeight * 2;
-
-    doc.text(`We are pleased to inform you that your application for admission to ${institution.institution_name}`, 20, y);
-    y += lineHeight;
-    doc.text('has been reviewed and approved.', 20, y);
-    y += lineHeight * 2;
-
-    doc.text('Admission Details:', 20, y);
-    y += lineHeight;
-
-    doc.text(`Program: ${program.program_name}`, 30, y);
-    y += lineHeight;
-    doc.text(`Institution: ${institution.institution_name}`, 30, y);
-    y += lineHeight;
-    doc.text(`Annual Tuition Fee: K${program.fee_per_year?.toLocaleString() || 'TBD'}`, 30, y);
-    y += lineHeight;
-    doc.text(`Semester Fee: K${((program.fee_per_year || 0) / 2).toLocaleString()}`, 30, y);
-    y += lineHeight * 2;
-
-    doc.text('Payment Schedule:', 20, y);
-    y += lineHeight;
-    doc.text('- Semester 1: Due within 2 weeks of registration', 30, y);
-    y += lineHeight;
-    doc.text('- Semester 2: Due before start of second semester', 30, y);
-    y += lineHeight * 2;
-
-    doc.text('Important Notes:', 20, y);
-    y += lineHeight;
-    doc.text('1. This acceptance is conditional upon meeting all admission requirements.', 30, y);
-    y += lineHeight;
-    doc.text('2. You must complete registration and fee payment to secure your place.', 30, y);
-    y += lineHeight;
-    doc.text('3. Contact the admissions office for any questions.', 30, y);
-    y += lineHeight * 2;
-
-    doc.text('Congratulations on your acceptance!', 20, y);
-    y += lineHeight * 2;
-
-    doc.text('Sincerely,', 20, y);
-    y += lineHeight * 3;
-
-    doc.text('[Admissions Director Name]', 20, y);
-    y += lineHeight;
-    doc.text('Director of Admissions', 20, y);
-    y += lineHeight;
-    doc.text(`${institution.institution_name}`, 20, y);
-
-    // Convert to buffer
-    const pdfBuffer = doc.output('arraybuffer');
-
-    // Upload to Supabase storage
-    const fileName = `acceptance_letters/institution_${applicationId}_${Date.now()}.pdf`;
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('documents')
-      .upload(fileName, pdfBuffer, {
-        contentType: 'application/pdf',
-      });
+    // Upload to Supabase Storage
+    const fileName = `acceptance_letters/${institution.institution_code}_${applicationId}_${Date.now()}.pdf`;
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from('institution-documents') // make sure this bucket exists
+      .upload(fileName, pdfBuffer, { contentType: 'application/pdf' });
 
     if (uploadError) {
       console.error('Upload error:', uploadError);
       return NextResponse.json({ error: 'Failed to upload PDF' }, { status: 500 });
     }
 
-    // Get public URL
-    const { data: { publicUrl } } = supabase.storage
-      .from('documents')
+    const { data: { publicUrl } } = supabaseAdmin.storage
+      .from('institution-documents')
       .getPublicUrl(fileName);
 
     // Update application with PDF URL
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseAdmin
       .from('institution_applications')
-      .update({
-        admission_letter_url: publicUrl
-      })
+      .update({ admission_letter_url: publicUrl })
       .eq('id', applicationId);
 
     if (updateError) {
       console.error('Update error:', updateError);
-      return NextResponse.json({ error: 'Failed to update application' }, { status: 500 });
+      // Not fatal, but log
     }
 
     return NextResponse.json({
       success: true,
       pdfUrl: publicUrl,
-      message: 'Acceptance letter generated successfully'
+      message: 'Acceptance letter generated'
     });
-
   } catch (error) {
     console.error('PDF generation error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

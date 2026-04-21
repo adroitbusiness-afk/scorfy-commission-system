@@ -1,0 +1,20 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build Next.js App",
+			"type": "shell",
+			"command": "npx next build"
+		},
+		{
+			"label": "Build Next.js App (Node Direct)",
+			"type": "shell",
+			"command": "node node_modules/.bin/next build"
+		},
+		{
+			"label": "Build via Node Script",
+			"type": "shell",
+			"command": "node build-script.js"
+		}
+	]
+}

@@ -5,7 +5,6 @@ import { supabase } from '@/lib/supabase/client';
 import {
   Users,
   Search,
-  Filter,
   Edit,
   Trash2,
   User,
@@ -18,18 +17,13 @@ import {
   Mail,
   Phone,
   Calendar,
-  MoreHorizontal,
-  Eye,
-  Ban,
-  CheckCircle,
-  XCircle,
   RefreshCw,
   Download,
-  Upload,
   AlertTriangle,
   Info,
   ChevronDown,
   ChevronUp,
+  Loader2,
 } from 'lucide-react';
 
 interface User {
@@ -37,7 +31,7 @@ interface User {
   email: string;
   full_name: string;
   phone: string;
-  role: 'student' | 'recruiter' | 'affiliate' | 'staff' | 'institution' | 'admin';
+  role: 'student' | 'recruiter' | 'affiliate' | 'institution_admin' | 'consultancy_admin' | 'admin';
   status: 'active' | 'inactive' | 'suspended' | 'pending';
   created_at: string;
   updated_at: string;
@@ -59,14 +53,31 @@ export default function UserManagement() {
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [expandedUser, setExpandedUser] = useState<string | null>(null);
 
+  // Fetch institutions on mount
   useEffect(() => {
     fetchInstitutions();
   }, []);
 
+  // Fetch users when filters change
   useEffect(() => {
     fetchUsers();
   }, [searchTerm, roleFilter, statusFilter]);
+
+  // Real-time subscription for user changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('user-management-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        fetchUsers();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const fetchInstitutions = async () => {
     try {
@@ -79,7 +90,6 @@ export default function UserManagement() {
       setInstitutions(data || []);
     } catch (error) {
       console.error('Failed to fetch institutions:', error);
-      setInstitutions([]);
     }
   };
 
@@ -87,7 +97,6 @@ export default function UserManagement() {
     try {
       setLoading(true);
       
-      // Build the query
       let query = supabase
         .from('profiles')
         .select('*')
@@ -107,9 +116,9 @@ export default function UserManagement() {
 
       if (error) throw error;
 
-      // Map institution names
-      const institutionMap = new Map(institutions.map(inst => [inst.id, inst.institution_name]));
-      
+      // Build institution map
+      const instMap = new Map(institutions.map(i => [i.id, i.institution_name]));
+
       const formattedUsers: User[] = (profiles || []).map((profile: any) => ({
         id: profile.id,
         email: profile.email || '',
@@ -121,13 +130,12 @@ export default function UserManagement() {
         updated_at: profile.updated_at,
         last_login: profile.last_login,
         institution_id: profile.institution_id,
-        institution_name: profile.institution_id ? (institutionMap.get(profile.institution_id) ?? undefined) : undefined,
+        institution_name: profile.institution_id ? instMap.get(profile.institution_id) : undefined,
       }));
 
       setUsers(formattedUsers);
     } catch (err) {
       console.error('Failed to fetch users:', err);
-      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -142,7 +150,7 @@ export default function UserManagement() {
         .eq('id', userId);
 
       if (error) throw error;
-      await fetchUsers();
+      // No need to refetch – subscription will update
     } catch (error) {
       console.error('Failed to update user status:', error);
       alert('Failed to update user status');
@@ -160,7 +168,6 @@ export default function UserManagement() {
         .eq('id', userId);
 
       if (error) throw error;
-      await fetchUsers();
     } catch (error) {
       console.error('Failed to update user role:', error);
       alert('Failed to update user role');
@@ -178,7 +185,6 @@ export default function UserManagement() {
         .eq('id', userId);
 
       if (error) throw error;
-      await fetchUsers();
     } catch (error) {
       console.error('Failed to update user institution:', error);
       alert('Failed to update user institution');
@@ -194,7 +200,6 @@ export default function UserManagement() {
       setActionLoading(userId);
       const { error } = await supabase.from('profiles').delete().eq('id', userId);
       if (error) throw error;
-      await fetchUsers();
     } catch (error) {
       console.error('Failed to delete user:', error);
       alert('Failed to delete user');
@@ -206,8 +211,8 @@ export default function UserManagement() {
   const getRoleIcon = (role: string) => {
     switch (role) {
       case 'admin': return <Crown className="w-4 h-4 text-yellow-500" />;
-      case 'staff': return <Shield className="w-4 h-4 text-blue-500" />;
-      case 'institution': return <Building2 className="w-4 h-4 text-purple-500" />;
+      case 'institution_admin': return <Building2 className="w-4 h-4 text-purple-500" />;
+      case 'consultancy_admin': return <Shield className="w-4 h-4 text-blue-500" />;
       case 'recruiter': return <Users className="w-4 h-4 text-green-500" />;
       case 'affiliate': return <UserCheck className="w-4 h-4 text-orange-500" />;
       default: return <User className="w-4 h-4 text-gray-500" />;
@@ -225,8 +230,8 @@ export default function UserManagement() {
   };
 
   const exportUsers = () => {
-    const csvContent = [
-      ['Name', 'Email', 'Phone', 'Role', 'Status', 'Institution', 'Created', 'Last Login'].join(','),
+    const csvRows = [
+      ['Name', 'Email', 'Phone', 'Role', 'Status', 'Institution', 'Created', 'Last Login'],
       ...users.map(user => [
         user.full_name,
         user.email,
@@ -235,10 +240,10 @@ export default function UserManagement() {
         user.status,
         user.institution_name || '',
         new Date(user.created_at).toLocaleDateString(),
-        user.last_login ? new Date(user.last_login).toLocaleDateString() : ''
-      ].join(','))
-    ].join('\n');
-
+        user.last_login ? new Date(user.last_login).toLocaleDateString() : '',
+      ]),
+    ];
+    const csvContent = csvRows.map(row => row.join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -247,6 +252,26 @@ export default function UserManagement() {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  const toggleExpand = (userId: string) => {
+    setExpandedUser(expandedUser === userId ? null : userId);
+  };
+
+  const roleOptions = [
+    { value: 'student', label: 'Student' },
+    { value: 'recruiter', label: 'Recruiter' },
+    { value: 'affiliate', label: 'Affiliate' },
+    { value: 'institution_admin', label: 'Institution Admin' },
+    { value: 'consultancy_admin', label: 'Consultancy Admin' },
+    { value: 'admin', label: 'System Admin' },
+  ];
+
+  const statusOptions = [
+    { value: 'active', label: 'Active' },
+    { value: 'inactive', label: 'Inactive' },
+    { value: 'suspended', label: 'Suspended' },
+    { value: 'pending', label: 'Pending' },
+  ];
 
   return (
     <div className="space-y-6">
@@ -262,7 +287,7 @@ export default function UserManagement() {
             className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
           >
             <Download className="w-4 h-4" />
-            <span>Export</span>
+            <span>Export CSV</span>
           </button>
           <button
             onClick={fetchUsers}
@@ -281,37 +306,33 @@ export default function UserManagement() {
             <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
             <input
               type="text"
-              placeholder="Search users..."
+              placeholder="Search by name or email..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="px-4 py-2 border border-gray-300 rounded-lg"
           >
             <option value="all">All Roles</option>
-            <option value="admin">Admin</option>
-            <option value="staff">Staff</option>
-            <option value="institution">Institution</option>
-            <option value="recruiter">Recruiter</option>
-            <option value="affiliate">Affiliate</option>
-            <option value="student">Student</option>
+            {roleOptions.map(role => (
+              <option key={role.value} value={role.value}>{role.label}</option>
+            ))}
           </select>
 
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="px-4 py-2 border border-gray-300 rounded-lg"
           >
             <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="suspended">Suspended</option>
-            <option value="pending">Pending</option>
+            {statusOptions.map(status => (
+              <option key={status.value} value={status.value}>{status.label}</option>
+            ))}
           </select>
 
           <div className="text-sm text-gray-600 flex items-center">
@@ -325,7 +346,7 @@ export default function UserManagement() {
       <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
         {loading ? (
           <div className="p-8 text-center">
-            <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
+            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
             <p className="text-gray-600">Loading users...</p>
           </div>
         ) : (
@@ -333,123 +354,139 @@ export default function UserManagement() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Institution</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Institution</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-200">
                 {users.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0 h-10 w-10">
-                          <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
+                  <>
+                    <tr key={user.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
                             <span className="text-sm font-medium text-gray-700">
                               {user.full_name?.charAt(0)?.toUpperCase() || '?'}
                             </span>
                           </div>
-                        </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{user.full_name}</div>
-                          <div className="text-sm text-gray-500 flex items-center">
-                            <Mail className="w-3 h-3 mr-1" />
-                            {user.email}
-                          </div>
-                          {user.phone && (
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-gray-900">{user.full_name}</div>
                             <div className="text-sm text-gray-500 flex items-center">
-                              <Phone className="w-3 h-3 mr-1" />
-                              {user.phone}
+                              <Mail className="w-3 h-3 mr-1" />
+                              {user.email}
                             </div>
-                          )}
+                            {user.phone && (
+                              <div className="text-sm text-gray-500 flex items-center">
+                                <Phone className="w-3 h-3 mr-1" />
+                                {user.phone}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center space-x-2">
-                        {getRoleIcon(user.role)}
-                        <span className="text-sm text-gray-900 capitalize">{user.role}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(user.status)}`}>
-                        {user.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {user.institution_name || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      <div className="flex items-center">
-                        <Calendar className="w-4 h-4 mr-1" />
-                        {new Date(user.created_at).toLocaleDateString()}
-                      </div>
-                      {user.last_login && (
-                        <div className="text-xs text-gray-400 mt-1">
-                          Last login: {new Date(user.last_login).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center space-x-2">
+                          {getRoleIcon(user.role)}
+                          <span className="text-sm text-gray-900 capitalize">
+                            {user.role.replace('_', ' ')}
+                          </span>
                         </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex items-center space-x-2">
-                        <select
-                          value={user.role}
-                          onChange={(e) => updateUserRole(user.id, e.target.value as User['role'])}
-                          disabled={actionLoading === user.id}
-                          className="text-xs border border-gray-300 rounded px-2 py-1"
-                        >
-                          <option value="student">Student</option>
-                          <option value="recruiter">Recruiter</option>
-                          <option value="affiliate">Affiliate</option>
-                          <option value="staff">Staff</option>
-                          <option value="institution">Institution</option>
-                          <option value="admin">Admin</option>
-                        </select>
-
-                        <select
-                          value={user.status}
-                          onChange={(e) => updateUserStatus(user.id, e.target.value as User['status'])}
-                          disabled={actionLoading === user.id}
-                          className="text-xs border border-gray-300 rounded px-2 py-1"
-                        >
-                          <option value="active">Active</option>
-                          <option value="inactive">Inactive</option>
-                          <option value="suspended">Suspended</option>
-                          <option value="pending">Pending</option>
-                        </select>
-
-                        <select
-                          value={user.institution_id || ''}
-                          onChange={(e) => updateUserInstitution(user.id, e.target.value || null)}
-                          disabled={actionLoading === user.id || institutions.length === 0}
-                          className="text-xs border border-gray-300 rounded px-2 py-1"
-                        >
-                          <option value="">No Institution</option>
-                          {institutions.map((inst) => (
-                            <option key={inst.id} value={inst.id}>
-                              {inst.institution_name}
-                            </option>
-                          ))}
-                        </select>
-
-                        <button
-                          onClick={() => deleteUser(user.id)}
-                          disabled={actionLoading === user.id}
-                          className="text-red-600 hover:text-red-900 p-1"
-                          title="Delete User"
-                        >
-                          {actionLoading === user.id ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-4 h-4" />
-                          )}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(user.status)}`}>
+                          {user.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {user.institution_name || '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <div className="flex items-center">
+                          <Calendar className="w-4 h-4 mr-1" />
+                          {new Date(user.created_at).toLocaleDateString()}
+                        </div>
+                        {user.last_login && (
+                          <div className="text-xs text-gray-400 mt-1">
+                            Last: {new Date(user.last_login).toLocaleDateString()}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right">
+                        <div className="flex items-center space-x-2 justify-end">
+                          <button
+                            onClick={() => toggleExpand(user.id)}
+                            className="text-gray-500 hover:text-gray-700 p-1"
+                            title="View Details"
+                          >
+                            {expandedUser === user.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </button>
+                          <button
+                            onClick={() => deleteUser(user.id)}
+                            disabled={actionLoading === user.id}
+                            className="text-red-600 hover:text-red-900 p-1 disabled:opacity-50"
+                            title="Delete User"
+                          >
+                            {actionLoading === user.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {expandedUser === user.id && (
+                      <tr className="bg-gray-50">
+                        <td colSpan={6} className="px-6 py-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500">Role</label>
+                              <select
+                                value={user.role}
+                                onChange={(e) => updateUserRole(user.id, e.target.value as User['role'])}
+                                disabled={actionLoading === user.id}
+                                className="mt-1 w-full border rounded px-2 py-1 text-sm"
+                              >
+                                {roleOptions.map(opt => (
+                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500">Status</label>
+                              <select
+                                value={user.status}
+                                onChange={(e) => updateUserStatus(user.id, e.target.value as User['status'])}
+                                disabled={actionLoading === user.id}
+                                className="mt-1 w-full border rounded px-2 py-1 text-sm"
+                              >
+                                {statusOptions.map(opt => (
+                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500">Institution</label>
+                              <select
+                                value={user.institution_id || ''}
+                                onChange={(e) => updateUserInstitution(user.id, e.target.value || null)}
+                                disabled={actionLoading === user.id || institutions.length === 0}
+                                className="mt-1 w-full border rounded px-2 py-1 text-sm"
+                              >
+                                <option value="">No Institution</option>
+                                {institutions.map(inst => (
+                                  <option key={inst.id} value={inst.id}>{inst.institution_name}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                          <div className="mt-3 text-xs text-gray-400">
+                            User ID: {user.id}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))}
               </tbody>
             </table>
@@ -459,7 +496,7 @@ export default function UserManagement() {
         {users.length === 0 && !loading && (
           <div className="p-8 text-center">
             <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No users found</h3>
+            <h3 className="text-lg font-medium text-gray-900">No users found</h3>
             <p className="text-gray-500">Try adjusting your search or filter criteria.</p>
           </div>
         )}

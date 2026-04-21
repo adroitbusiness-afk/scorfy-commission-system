@@ -17,14 +17,12 @@ import {
   RefreshCw, MessageCircle, LogOut, Menu, X, Bell, Brain, Target, Search, Star, Flame,
   Loader2, ChevronDown, ChevronUp, Send, CheckCircle, AlertCircle, Upload,
   Plus, MessageSquare, Edit, Trash2, LayoutDashboard, FileText, Settings, Share2, FileBarChart,
-  Calendar as CalendarIcon, Zap, Sparkles, Calendar
+  Calendar as CalendarIcon, Zap, Sparkles, Calendar, Lock
 } from 'lucide-react';
 import { FaFacebook, FaTwitter, FaLinkedin, FaEnvelope } from 'react-icons/fa';
 import { format } from 'date-fns';
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
+// ========== Helper Functions ==========
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW' }).format(value || 0);
 
@@ -72,15 +70,14 @@ const formatTemplateMessage = (templateKey: string, lead: Partial<AnalyzedLead> 
     .replace(/\{institution\}/g, lead.institution || 'your preferred institution');
 };
 
-// ============================================================================
-// Offline Queue (IndexedDB)
-// ============================================================================
+// ========== Offline Queue (Client‑side only) ==========
 class OfflineQueue {
   private db: IDBDatabase | null = null;
   private readonly DB_NAME = 'recruiter_offline';
   private readonly STORE_NAME = 'events';
 
   async init(): Promise<void> {
+    if (typeof window === 'undefined') return;
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(this.DB_NAME, 1);
       request.onerror = () => reject(request.error);
@@ -98,6 +95,7 @@ class OfflineQueue {
   }
 
   async addEvent(event: any): Promise<void> {
+    if (typeof window === 'undefined') return;
     if (!this.db) await this.init();
     const tx = this.db!.transaction([this.STORE_NAME], 'readwrite');
     const store = tx.objectStore(this.STORE_NAME);
@@ -106,6 +104,7 @@ class OfflineQueue {
   }
 
   async getEvents(): Promise<any[]> {
+    if (typeof window === 'undefined') return [];
     if (!this.db) await this.init();
     return new Promise((resolve) => {
       const tx = this.db!.transaction([this.STORE_NAME], 'readonly');
@@ -116,6 +115,7 @@ class OfflineQueue {
   }
 
   async clearEvents(): Promise<void> {
+    if (typeof window === 'undefined') return;
     if (!this.db) await this.init();
     const tx = this.db!.transaction([this.STORE_NAME], 'readwrite');
     const store = tx.objectStore(this.STORE_NAME);
@@ -124,11 +124,12 @@ class OfflineQueue {
   }
 }
 
-const offlineQueue = new OfflineQueue();
+let offlineQueue: OfflineQueue | null = null;
+if (typeof window !== 'undefined') {
+  offlineQueue = new OfflineQueue();
+}
 
-// ============================================================================
-// AI Content Generator (for referral sharing)
-// ============================================================================
+// ========== AI Content Generator ==========
 const generateWhatsAppStatus = (): string => {
   const templates = [
     "🚀 Join me as a recruiter on our platform! Earn commissions and rewards. Use my referral link: {link}",
@@ -139,9 +140,7 @@ const generateWhatsAppStatus = (): string => {
   return templates[Math.floor(Math.random() * templates.length)];
 };
 
-// ============================================================================
-// Sub-components (Sidebar, TemplateLibrary, FileUploadModal)
-// ============================================================================
+// ========== Sidebar Component ==========
 function Sidebar({ recruiter, sidebarOpen, notifications, activeSection, onSectionChange, onLogout, onToggleSidebar }: any) {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -156,10 +155,6 @@ function Sidebar({ recruiter, sidebarOpen, notifications, activeSection, onSecti
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
-  const handleClick = (id: string) => {
-    onSectionChange(id);
-  };
-
   return (
     <div className={`fixed inset-y-0 left-0 transform ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 transition duration-200 ease-in-out z-30 w-64 bg-white shadow-xl border-r`}>
       <div className="flex items-center justify-between p-4 border-b">
@@ -169,9 +164,7 @@ function Sidebar({ recruiter, sidebarOpen, notifications, activeSection, onSecti
           </div>
           <span className="font-bold text-gray-800">Recruiter Portal</span>
         </div>
-        <button onClick={() => onToggleSidebar(false)} className="lg:hidden text-gray-500">
-          <X size={20} />
-        </button>
+        <button onClick={() => onToggleSidebar(false)} className="lg:hidden text-gray-500"><X size={20} /></button>
       </div>
       <div className="p-4 border-b bg-gradient-to-r from-blue-50 to-purple-50">
         <p className="text-sm text-gray-500">Welcome,</p>
@@ -182,7 +175,7 @@ function Sidebar({ recruiter, sidebarOpen, notifications, activeSection, onSecti
         {menuItems.map((item) => (
           <button
             key={item.id}
-            onClick={() => handleClick(item.id)}
+            onClick={() => onSectionChange(item.id)}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${
               activeSection === item.id
                 ? 'bg-blue-50 text-blue-600 shadow-sm'
@@ -204,6 +197,7 @@ function Sidebar({ recruiter, sidebarOpen, notifications, activeSection, onSecti
   );
 }
 
+// ========== TemplateLibrary (unchanged) ==========
 function TemplateLibrary({ recruiterId }: { recruiterId: string }) {
   const [templates, setTemplates] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -320,6 +314,7 @@ function TemplateLibrary({ recruiterId }: { recruiterId: string }) {
   );
 }
 
+// ========== FileUploadModal (unchanged) ==========
 function FileUploadModal({ isOpen, onClose, onLeadsExtracted, institutions, selectedInstitution, onInstitutionChange, recruiter }: any) {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -402,9 +397,7 @@ function FileUploadModal({ isOpen, onClose, onLeadsExtracted, institutions, sele
   );
 }
 
-// ============================================================================
-// Main Component
-// ============================================================================
+// ========== Main Component ==========
 export default function RecruiterDashboard() {
   const router = useRouter();
   const [recruiter, setRecruiter] = useState<any>(null);
@@ -456,17 +449,32 @@ export default function RecruiterDashboard() {
   const subscriptionRef = useRef<any>(null);
   const isLoadingRef = useRef(false);
 
+  // New states for added features
+  const [trialDaysLeft, setTrialDaysLeft] = useState(30);
+  const [subscriptionStatus, setSubscriptionStatus] = useState('trial');
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [showAddLeadModal, setShowAddLeadModal] = useState(false);
+  const [newLead, setNewLead] = useState({ name: '', email: '', phone: '', program: '' });
+  const [offlineReady, setOfflineReady] = useState(false);
+
   // Reset page on filter change
   useEffect(() => { setCurrentPage(1); }, [filterStatus, filterPriority, searchTerm, sortBy, sortOrder]);
 
- // Service Worker Background Sync (PWA offline support)
-useEffect(() => {
-  if ('serviceWorker' in navigator && 'SyncManager' in window) {
-    navigator.serviceWorker.ready.then(reg => {
-      (reg as any).sync.register('sync-leads').catch((err: any) => console.log('Sync registration failed', err));
-    });
-  }
-}, []);
+  // Service Worker Background Sync (PWA offline support)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator && 'SyncManager' in window) {
+      navigator.serviceWorker.ready.then(reg => {
+        (reg as any).sync.register('sync-leads').catch((err: any) => console.log('Sync registration failed', err));
+      });
+    }
+  }, []);
+
+  // Initialize offline queue only on client side
+  useEffect(() => {
+    if (typeof window !== 'undefined' && offlineQueue) {
+      offlineQueue.init().then(() => setOfflineReady(true)).catch(console.error);
+    }
+  }, []);
 
   // Offline sync (only when recruiter exists)
   useEffect(() => {
@@ -474,17 +482,15 @@ useEffect(() => {
     const handleOffline = () => setOnline(false);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-    offlineQueue.init().then(() => {
-      if (recruiter && !isLoadingRef.current) syncOfflineEvents();
-    });
+    if (offlineReady && recruiter && !isLoadingRef.current) syncOfflineEvents();
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [recruiter]);
+  }, [recruiter, offlineReady]);
 
   const syncOfflineEvents = async () => {
-    if (!recruiter) return;
+    if (!offlineQueue || !recruiter) return;
     const recruiterId = recruiter.user_id;
     const events = await offlineQueue.getEvents();
     if (events.length === 0) return;
@@ -645,35 +651,35 @@ ${reportData.nextSteps.map((s, i) => `${i+1}. ${s}`).join('\n')}
 
   // Action handlers with tracking
   const sendWhatsApp = async (lead: AnalyzedLead) => {
-  if (!lead.id) return; // safety guard
-  const message = formatTemplateMessage(selectedTemplate, lead);
-  const phone = lead.phone?.replace(/\D/g, '');
-  if (!phone) return;
-  const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-  window.open(url, '_blank');
-  await logAction(lead.id, 'whatsapp', 'sent', `Message: ${message.substring(0, 100)}`);
-  if (lead.status === 'new') await updateLeadStatus(lead.id, 'contacted', 'sent_whatsapp');
-  loadData();
-};
+    if (!lead.id) return;
+    const message = formatTemplateMessage(selectedTemplate, lead);
+    const phone = lead.phone?.replace(/\D/g, '');
+    if (!phone) return;
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+    await logAction(lead.id, 'whatsapp', 'sent', `Message: ${message.substring(0, 100)}`);
+    if (lead.status === 'new') await updateLeadStatus(lead.id, 'contacted', 'sent_whatsapp');
+    loadData();
+  };
 
-const sendEmail = async (lead: AnalyzedLead) => {
-  if (!lead.id) return;
-  const subject = messageTemplates[selectedTemplate]?.title || 'Enrollment Steps';
-  const body = formatTemplateMessage(selectedTemplate, lead);
-  window.location.href = `mailto:${lead.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  await logAction(lead.id, 'email', 'sent', `Email: ${body.substring(0, 100)}`);
-  if (lead.status === 'new') await updateLeadStatus(lead.id, 'contacted', 'sent_email');
-};
+  const sendEmail = async (lead: AnalyzedLead) => {
+    if (!lead.id) return;
+    const subject = messageTemplates[selectedTemplate]?.title || 'Enrollment Steps';
+    const body = formatTemplateMessage(selectedTemplate, lead);
+    window.location.href = `mailto:${lead.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    await logAction(lead.id, 'email', 'sent', `Email: ${body.substring(0, 100)}`);
+    if (lead.status === 'new') await updateLeadStatus(lead.id, 'contacted', 'sent_email');
+  };
 
-const makeCall = (lead: AnalyzedLead) => {
-  if (!lead.id) return;
-  const phone = lead.phone?.replace(/\D/g, '');
-  if (phone?.startsWith('260')) {
-    window.location.href = `tel:${phone}`;
-    logAction(lead.id, 'call', 'sent', 'Call initiated');
-    updateLeadStatus(lead.id, 'contacted', 'made_call');
-  }
-};
+  const makeCall = (lead: AnalyzedLead) => {
+    if (!lead.id) return;
+    const phone = lead.phone?.replace(/\D/g, '');
+    if (phone?.startsWith('260')) {
+      window.location.href = `tel:${phone}`;
+      logAction(lead.id, 'call', 'sent', 'Call initiated');
+      updateLeadStatus(lead.id, 'contacted', 'made_call');
+    }
+  };
 
   const updateLeadStatus = async (leadId: string, newStatus: string, action?: string) => {
     try {
@@ -724,6 +730,33 @@ const makeCall = (lead: AnalyzedLead) => {
     await loadData();
   };
 
+  const addLead = async () => {
+    if (!recruiter) return;
+    await supabase.from('leads').insert({
+      ...newLead,
+      assigned_recruiter: recruiter.user_id,
+      status: 'new',
+      created_at: new Date().toISOString(),
+    });
+    setShowAddLeadModal(false);
+    setNewLead({ name: '', email: '', phone: '', program: '' });
+    loadData();
+  };
+
+  const subscribe = async (plan: string) => {
+    const res = await fetch('/api/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({ recruiter_id: recruiter.user_id, plan }),
+    });
+    if (res.ok) {
+      alert('Subscription successful!');
+      setShowSubscriptionModal(false);
+      loadData();
+    } else {
+      alert('Payment failed');
+    }
+  };
+
   // Main data loader
   const loadData = useCallback(async () => {
     if (isLoadingRef.current) return;
@@ -745,6 +778,16 @@ const makeCall = (lead: AnalyzedLead) => {
       const recruiterUserId = recruiterData.user_id;
       setRecruiter(recruiterData);
 
+      // Subscription trial info
+      const trialStart = new Date(recruiterData.trial_started_at);
+      const daysPassed = Math.floor((Date.now() - trialStart.getTime()) / (1000 * 60 * 60 * 24));
+      const left = Math.max(0, 30 - daysPassed);
+      setTrialDaysLeft(left);
+      setSubscriptionStatus(recruiterData.subscription_status);
+      if (left === 0 && recruiterData.subscription_status !== 'active') {
+        setShowSubscriptionModal(true);
+      }
+
       // Points & level
       const { data: pointsData } = await supabase
         .from('recruiter_points')
@@ -753,7 +796,6 @@ const makeCall = (lead: AnalyzedLead) => {
         .maybeSingle();
       const points = pointsData?.points || 0;
       const level = pointsData?.level || 1;
-      const badges = pointsData?.badges || [];
 
       const { data: institutionsData } = await supabase
         .from('institutions')
@@ -864,7 +906,6 @@ const makeCall = (lead: AnalyzedLead) => {
         setShortCode(code);
         setShortLink(`${window.location.origin}/r/r/${code}`);
       }
-
     } catch (error) {
       console.error('Error loading recruiter data:', error);
     } finally {
@@ -909,10 +950,10 @@ const makeCall = (lead: AnalyzedLead) => {
     navigator.clipboard.writeText(shortLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-    if (online && recruiter) {
+    if (online && recruiter && offlineQueue) {
       supabase.from('recruiter_referral_clicks').insert({ recruiter_id: recruiter.user_id, clicked_at: new Date().toISOString(), referrer_url: 'copy_share' });
       addPoints('Referral click', 5);
-    } else if (!online) {
+    } else if (!online && offlineQueue) {
       offlineQueue.addEvent({ type: 'click', url: 'copy_share', timestamp: new Date().toISOString() });
     }
   };
@@ -928,7 +969,7 @@ const makeCall = (lead: AnalyzedLead) => {
     };
     if (urls[platform]) window.open(urls[platform], '_blank');
     if (online && recruiter) await addPoints('Social share', 20);
-    else if (!online) await offlineQueue.addEvent({ type: 'share', timestamp: new Date().toISOString() });
+    else if (!online && offlineQueue) await offlineQueue.addEvent({ type: 'share', timestamp: new Date().toISOString() });
   };
 
   const generateStatus = () => {
@@ -943,28 +984,22 @@ const makeCall = (lead: AnalyzedLead) => {
   const handleSectionChange = (section: string) => {
     if (section === 'quick-admission') {
       router.push('/quick-admission');
+    } else if (section === 'settings') {
+      router.push('/recruiter/settings');
     } else {
       setActiveSection(section);
     }
   };
 
-  const levelProgress = stats.level ? ((stats.points % 500) / 500) * 100 : 0;
-
   if (loading) return <div className="min-h-screen bg-gray-50 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
 
-  // ==========================================================================
-  // JSX (unchanged – exactly the same as the original)
-  // ==========================================================================
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Achievement Toast */}
       {showAchievement && (
         <div className="fixed top-20 right-4 z-50 bg-gradient-to-r from-blue-500 to-purple-600 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 animate-bounce">
           <Zap className="w-5 h-5" />
-          <div>
-            <p className="font-bold">+{showAchievement.points} points!</p>
-            <p className="text-xs">{showAchievement.message}</p>
-          </div>
+          <div><p className="font-bold">+{showAchievement.points} points!</p><p className="text-xs">{showAchievement.message}</p></div>
         </div>
       )}
 
@@ -1014,20 +1049,15 @@ const makeCall = (lead: AnalyzedLead) => {
               </div>
             </div>
 
-            {/* Level Progress Bar (dashboard only) */}
-            {activeSection === 'dashboard' && (
-              <div className="mb-6 bg-white rounded-xl p-4 shadow-sm border">
-                <div className="flex justify-between text-sm mb-1 text-gray-600">
-                  <span>Level {stats.level || 1} Progress</span>
-                  <span>{(stats.points || 0) % 500}/500 XP</span>
-                </div>
-                <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
-                  <div className="bg-gradient-to-r from-blue-500 to-purple-600 h-full transition-all duration-500" style={{ width: `${levelProgress || 0}%` }}></div>
-                </div>
+            {/* Trial Banner */}
+            {trialDaysLeft <= 7 && subscriptionStatus !== 'active' && (
+              <div className="mb-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded flex justify-between items-center">
+                <span>⚠️ Your free trial ends in {trialDaysLeft} days. After that, only Quick Admission and Dashboard remain free.</span>
+                <button onClick={() => setShowSubscriptionModal(true)} className="bg-yellow-600 text-white px-3 py-1 rounded text-sm">Subscribe Now</button>
               </div>
             )}
 
-            {/* DASHBOARD SECTION (no charts) */}
+            {/* DASHBOARD SECTION (free forever) */}
             {activeSection === 'dashboard' && (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -1127,60 +1157,77 @@ const makeCall = (lead: AnalyzedLead) => {
               </div>
             )}
 
-            {/* LEADS SECTION */}
+            {/* LEADS SECTION (premium after trial) */}
             {activeSection === 'leads' && (
               <div className="space-y-6">
-                <div className="bg-white rounded-2xl p-6 shadow-sm border">
-                  <div className="flex flex-wrap gap-3 items-center justify-between mb-6">
-                    <div className="flex gap-2">
-                      <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
-                        <option value="all">All Status</option><option value="new">New</option><option value="contacted">Contacted</option><option value="qualified">Qualified</option><option value="converted">Converted</option><option value="lost">Lost</option>
-                      </select>
-                      <select value={filterPriority} onChange={(e) => setFilterPriority(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
-                        <option value="all">All Priorities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
-                      </select>
-                      <div className="relative"><Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} /><input type="text" placeholder="Search leads..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 pr-4 py-2 border rounded-lg text-sm w-64" /></div>
-                      <button onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')} className="p-2 border rounded-lg">{sortOrder === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</button>
-                      <button onClick={loadData} className="p-2 border rounded-lg"><RefreshCw size={18} /></button>
-                      <button onClick={() => setImportModalOpen(true)} className="px-3 py-2 bg-green-600 text-white rounded-lg text-sm flex items-center gap-1"><Upload size={16} /> Import Leads</button>
+                {trialDaysLeft === 0 && subscriptionStatus !== 'active' ? (
+                  <div className="bg-white rounded-2xl p-12 text-center border">
+                    <Lock size={48} className="mx-auto text-gray-400 mb-4" />
+                    <h2 className="text-2xl font-bold mb-2">Leads Management is a Premium Feature</h2>
+                    <p className="text-gray-600 mb-4">Subscribe to access your leads and more.</p>
+                    <button onClick={() => setShowSubscriptionModal(true)} className="bg-blue-600 text-white px-6 py-2 rounded">Subscribe Now</button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="bg-white rounded-2xl p-6 shadow-sm border">
+                      <div className="flex flex-wrap gap-3 items-center justify-between mb-6">
+                        <div className="flex gap-2">
+                          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
+                            <option value="all">All Status</option><option value="new">New</option><option value="contacted">Contacted</option><option value="qualified">Qualified</option><option value="converted">Converted</option><option value="lost">Lost</option>
+                          </select>
+                          <select value={filterPriority} onChange={(e) => setFilterPriority(e.target.value)} className="px-3 py-2 border rounded-lg text-sm">
+                            <option value="all">All Priorities</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
+                          </select>
+                          <div className="relative"><Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} /><input type="text" placeholder="Search leads..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 pr-4 py-2 border rounded-lg text-sm w-64" /></div>
+                          <button onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')} className="p-2 border rounded-lg">{sortOrder === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</button>
+                          <button onClick={loadData} className="p-2 border rounded-lg"><RefreshCw size={18} /></button>
+                          <button onClick={() => setImportModalOpen(true)} className="px-3 py-2 bg-green-600 text-white rounded-lg text-sm flex items-center gap-1"><Upload size={16} /> Import Leads</button>
+                          <button onClick={() => setShowAddLeadModal(true)} className="px-3 py-2 bg-purple-600 text-white rounded-lg text-sm flex items-center gap-1"><Plus size={16} /> Add Lead</button>
+                        </div>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="border-b bg-gray-50"><tr className="text-left text-xs font-medium text-gray-500 uppercase"><th className="px-4 py-3">Lead</th><th className="px-4 py-3">Contact</th><th className="px-4 py-3 text-center">AI Score</th><th className="px-4 py-3">Intent</th><th className="px-4 py-3">Priority</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Actions</th></tr></thead>
+                          <tbody className="divide-y">
+                            {paginatedLeads.map((lead) => (
+                              <tr key={lead.id} className="hover:bg-gray-50">
+                                <td className="px-4 py-4"><p className="font-medium text-gray-900">{lead.name}</p><p className="text-xs text-gray-400">ID: {lead.id?.slice(0,8)}</p></td>
+                                <td className="px-4 py-4 text-sm text-gray-600">{lead.email}<br/>{lead.phone || 'No phone'}</td>
+                                <td className="px-4 py-4 text-center"><span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-700 font-bold">{lead.score || 0}</span></td>
+                                <td className="px-4 py-4"><span className="flex items-center gap-1 text-sm text-gray-700 capitalize">{getIntentIcon(lead.intent)}{lead.intent?.replace(/_/g, ' ')}</span></td>
+                                <td className="px-4 py-4"><span className={`px-2 py-1 text-xs rounded-full ${getPriorityColor(lead.priority)}`}>{lead.priority || 'medium'}</span></td>
+                                <td className="px-4 py-4"><select value={lead.status} onChange={(e) => updateLeadStatus(lead.id!, e.target.value, 'status_change')} className={`text-xs border rounded px-2 py-1 bg-white ${getStatusBadge(lead.status)}`}><option value="new">New</option><option value="contacted">Contacted</option><option value="qualified">Qualified</option><option value="converted">Converted</option><option value="lost">Lost</option></select></td>
+                                <td className="px-4 py-4"><div className="flex gap-1"><button onClick={() => sendWhatsApp(lead)} className="p-1.5 bg-green-100 text-green-700 rounded"><MessageCircle size={14} /></button><button onClick={() => sendEmail(lead)} className="p-1.5 bg-blue-100 text-blue-700 rounded"><Mail size={14} /></button>{lead.phone?.startsWith('260') && <button onClick={() => makeCall(lead)} className="p-1.5 bg-yellow-100 text-yellow-700 rounded"><Phone size={14} /></button>}</div></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {totalPages > 1 && <div className="flex justify-between items-center mt-4"><button onClick={() => setCurrentPage(p=>Math.max(1,p-1))} disabled={currentPage===1} className="px-3 py-1 border rounded-lg">Previous</button><span className="text-gray-600">Page {currentPage} of {totalPages}</span><button onClick={() => setCurrentPage(p=>Math.min(totalPages,p+1))} disabled={currentPage===totalPages} className="px-3 py-1 border rounded-lg">Next</button></div>}
                     </div>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="border-b bg-gray-50">
-                        <tr className="text-left text-xs font-medium text-gray-500 uppercase">
-                          <th className="px-4 py-3">Lead</th><th className="px-4 py-3">Contact</th><th className="px-4 py-3 text-center">AI Score</th><th className="px-4 py-3">Intent</th><th className="px-4 py-3">Priority</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {paginatedLeads.map((lead) => (
-                          <tr key={lead.id} className="hover:bg-gray-50">
-                            <td className="px-4 py-4"><p className="font-medium text-gray-900">{lead.name}</p><p className="text-xs text-gray-400">ID: {lead.id?.slice(0,8)}</p></td>
-                            <td className="px-4 py-4 text-sm text-gray-600">{lead.email}<br/>{lead.phone || 'No phone'}</td>
-                            <td className="px-4 py-4 text-center"><span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-700 font-bold">{lead.score || 0}</span></td>
-                            <td className="px-4 py-4"><span className="flex items-center gap-1 text-sm text-gray-700 capitalize">{getIntentIcon(lead.intent)}{lead.intent?.replace(/_/g, ' ')}</span></td>
-                            <td className="px-4 py-4"><span className={`px-2 py-1 text-xs rounded-full ${getPriorityColor(lead.priority)}`}>{lead.priority || 'medium'}</span></td>
-                            <td className="px-4 py-4"><select value={lead.status} onChange={(e) => updateLeadStatus(lead.id!, e.target.value, 'status_change')} className={`text-xs border rounded px-2 py-1 bg-white ${getStatusBadge(lead.status)}`}><option value="new">New</option><option value="contacted">Contacted</option><option value="qualified">Qualified</option><option value="converted">Converted</option><option value="lost">Lost</option></select></td>
-                            <td className="px-4 py-4"><div className="flex gap-1"><button onClick={() => sendWhatsApp(lead)} className="p-1.5 bg-green-100 text-green-700 rounded"><MessageCircle size={14} /></button><button onClick={() => sendEmail(lead)} className="p-1.5 bg-blue-100 text-blue-700 rounded"><Mail size={14} /></button>{lead.phone?.startsWith('260') && <button onClick={() => makeCall(lead)} className="p-1.5 bg-yellow-100 text-yellow-700 rounded"><Phone size={14} /></button>}</div></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {totalPages > 1 && <div className="flex justify-between items-center mt-4"><button onClick={() => setCurrentPage(p=>Math.max(1,p-1))} disabled={currentPage===1} className="px-3 py-1 border rounded-lg">Previous</button><span className="text-gray-600">Page {currentPage} of {totalPages}</span><button onClick={() => setCurrentPage(p=>Math.min(totalPages,p+1))} disabled={currentPage===totalPages} className="px-3 py-1 border rounded-lg">Next</button></div>}
-                </div>
+                  </>
+                )}
               </div>
             )}
 
-            {/* TEMPLATE LIBRARY */}
-            {activeSection === 'templates' && recruiter && (
+            {/* Other premium sections (templates, bulk, sharing, reports, claims, ai-assistant) */}
+            {activeSection !== 'dashboard' && activeSection !== 'leads' && activeSection !== 'quick-admission' && activeSection !== 'settings' && (
+              <div className="bg-white rounded-2xl p-12 text-center border">
+                <Lock size={48} className="mx-auto text-gray-400 mb-4" />
+                <h2 className="text-2xl font-bold mb-2">Premium Feature</h2>
+                <p className="text-gray-600 mb-4">This feature is available only for active subscribers.</p>
+                <button onClick={() => setShowSubscriptionModal(true)} className="bg-blue-600 text-white px-6 py-2 rounded">Subscribe Now</button>
+              </div>
+            )}
+
+            {/* Template Library, Bulk Messaging, Sharing, Reports, Claims, AI Assistant – original content (if subscriber) */}
+            {activeSection === 'templates' && recruiter && (trialDaysLeft > 0 || subscriptionStatus === 'active') && (
               <div className="bg-white rounded-2xl p-6 shadow-sm border">
                 <TemplateLibrary recruiterId={recruiter.user_id} />
               </div>
             )}
 
-            {/* BULK MESSAGING */}
-            {activeSection === 'bulk-messaging' && (
+            {activeSection === 'bulk-messaging' && (trialDaysLeft > 0 || subscriptionStatus === 'active') && (
               <div className="bg-white rounded-2xl p-6 shadow-sm border">
                 <div className="space-y-6">
                   <div className="flex items-center gap-4"><input type="checkbox" checked={selectedLeads.size === paginatedLeads.length} onChange={(e) => setSelectedLeads(e.target.checked ? new Set(paginatedLeads.map(l=>l.id).filter(id=>id)) : new Set())} className="w-4 h-4 text-blue-600 rounded" /><span className="font-medium text-gray-800">Select All ({paginatedLeads.length} leads)</span></div>
@@ -1194,16 +1241,14 @@ const makeCall = (lead: AnalyzedLead) => {
               </div>
             )}
 
-            {/* SHARING */}
-            {activeSection === 'sharing' && (
+            {activeSection === 'sharing' && (trialDaysLeft > 0 || subscriptionStatus === 'active') && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-white rounded-2xl p-6 shadow-sm border"><h3 className="text-xl font-bold mb-4 text-gray-800">📤 Share Leads</h3><div className="space-y-4"><div><label className="block text-sm font-medium text-gray-700 mb-2">Select Leads to Share</label><div className="max-h-48 overflow-y-auto border rounded-lg p-3">{paginatedLeads.slice(0,5).map(lead=><div key={lead.id} className="flex items-center gap-2 py-1"><input type="checkbox" className="w-4 h-4"/><span className="text-sm text-gray-700">{lead.name}</span></div>)}</div></div><div><label className="block text-sm font-medium text-gray-700 mb-2">Share with Recruiter</label><select className="w-full px-3 py-2 border rounded-lg"><option>Select recruiter...</option><option>Jane Smith</option><option>Mike Johnson</option></select></div><button className="w-full px-4 py-2 bg-blue-600 text-white rounded-xl">Share Selected Leads</button></div></div>
                 <div className="bg-white rounded-2xl p-6 shadow-sm border"><h3 className="text-xl font-bold mb-4 text-gray-800">📥 Shared with Me</h3><div className="space-y-3"><div className="p-4 bg-green-50 rounded-xl border"><div className="flex justify-between"><div><p className="font-medium text-green-800">5 leads from Jane Smith</p><p className="text-sm text-green-700">Engineering program leads</p></div><span className="text-xs text-green-600">2h ago</span></div></div><div className="p-4 bg-blue-50 rounded-xl border"><div className="flex justify-between"><div><p className="font-medium text-blue-800">3 leads from Mike Johnson</p><p className="text-sm text-blue-700">Business program leads</p></div><span className="text-xs text-blue-600">1d ago</span></div></div></div></div>
               </div>
             )}
 
-            {/* REPORTS */}
-            {activeSection === 'reports' && (
+            {activeSection === 'reports' && (trialDaysLeft > 0 || subscriptionStatus === 'active') && (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div className="bg-white rounded-2xl p-6 shadow-sm border"><h3 className="text-xl font-bold mb-4 text-gray-800">Performance Overview</h3><div className="text-gray-700">Monthly performance charts have been replaced with AI narrative analytics. Please check the Dashboard tab for insights.</div></div>
@@ -1213,32 +1258,62 @@ const makeCall = (lead: AnalyzedLead) => {
               </div>
             )}
 
-            {/* CLAIMS */}
-            {activeSection === 'claims' && (
+            {activeSection === 'claims' && (trialDaysLeft > 0 || subscriptionStatus === 'active') && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-white rounded-2xl p-6 shadow-sm border"><h3 className="text-xl font-bold mb-4 text-gray-800">💵 Pending Claims</h3>{commissions.filter(c => c.status === 'pending').length === 0 ? <p className="text-gray-500">No pending commissions.</p> : commissions.filter(c => c.status === 'pending').map((c) => (<div key={c.id} className="p-4 bg-yellow-50 rounded-xl border mb-3"><div className="flex justify-between"><div><span className="font-medium text-yellow-800">Claim #{c.id?.slice(0,6)}</span><p className="text-sm text-yellow-700">Lead: {c.student_id || 'N/A'}</p></div><span className="text-lg font-bold text-gray-900">{formatCurrency(c.amount || 0)}</span></div><button onClick={() => markCommissionPaid(c.id)} disabled={markingCommissionId === c.id} className="mt-2 px-3 py-1 bg-yellow-600 text-white text-sm rounded-lg">Mark Paid</button></div>))}</div>
                 <div className="bg-white rounded-2xl p-6 shadow-sm border"><h3 className="text-xl font-bold mb-4 text-gray-800">✅ Claimed Commissions</h3>{commissions.filter(c => c.status === 'paid').length === 0 ? <p className="text-gray-500">No paid commissions yet.</p> : commissions.filter(c => c.status === 'paid').map((c) => (<div key={c.id} className="p-4 bg-green-50 rounded-xl border mb-3"><div className="flex justify-between"><div><p className="font-medium text-green-800">Claim #{c.id?.slice(0,6)}</p><p className="text-sm text-green-700">Lead: {c.student_id || 'N/A'}</p></div><span className="text-lg font-bold text-gray-900">{formatCurrency(c.amount || 0)}</span></div><span className="inline-block px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">Paid</span></div>))}</div>
               </div>
             )}
 
-            {/* AI ASSISTANT */}
-            {activeSection === 'ai-assistant' && (
+            {activeSection === 'ai-assistant' && (trialDaysLeft > 0 || subscriptionStatus === 'active') && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="bg-white rounded-2xl p-6 shadow-sm border"><h3 className="text-xl font-bold mb-4 text-gray-800">💡 AI Insights</h3><div className="space-y-4"><div className="p-4 bg-blue-50 rounded-xl"><h4 className="font-medium text-blue-800">🎯 Lead Quality Analysis</h4><p className="text-sm text-blue-700">Your leads have a 78% conversion potential. Focus on high-priority leads in the next 24 hours.</p></div><div className="p-4 bg-green-50 rounded-xl"><h4 className="font-medium text-green-800">📈 Performance Prediction</h4><p className="text-sm text-green-700">Based on trends, you could convert 12 more leads this month.</p></div></div></div>
                 <div className="bg-white rounded-2xl p-6 shadow-sm border"><h3 className="text-xl font-bold mb-4 text-gray-800">🤖 Ask AI Assistant</h3><div className="bg-gray-50 rounded-xl p-4"><p className="text-sm text-gray-600 mb-2">How can I improve my conversion rate?</p><div className="bg-white rounded-lg p-3 border"><p className="text-sm text-gray-800">Focus on personalized follow-ups within 24 hours.</p></div></div><input type="text" placeholder="Ask me anything..." className="w-full mt-4 px-4 py-3 border rounded-xl" /></div>
               </div>
             )}
-
-            {/* SETTINGS */}
-            {activeSection === 'settings' && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-white rounded-2xl p-6 shadow-sm border"><h3 className="text-xl font-bold mb-4 text-gray-800">👤 Profile Settings</h3><div className="space-y-4"><input type="text" defaultValue={recruiter?.name} className="w-full p-2 border rounded-lg"/><input type="email" defaultValue={recruiter?.email} className="w-full p-2 border rounded-lg"/><button className="w-full px-4 py-2 bg-blue-600 text-white rounded-xl">Update Profile</button></div></div>
-                <div className="bg-white rounded-2xl p-6 shadow-sm border"><h3 className="text-xl font-bold mb-4 text-gray-800">🔔 Notification Preferences</h3><div className="space-y-3"><div className="flex justify-between text-gray-700"><span>Email notifications</span><input type="checkbox" defaultChecked className="w-4 h-4 text-blue-600"/></div><div className="flex justify-between text-gray-700"><span>WhatsApp notifications</span><input type="checkbox" defaultChecked/></div></div></div>
-              </div>
-            )}
           </div>
         </main>
       </div>
+
+      {/* Add Lead Modal */}
+      {showAddLeadModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6">
+            <h3 className="text-xl font-bold mb-4">Add New Lead</h3>
+            <input type="text" placeholder="Name" value={newLead.name} onChange={e => setNewLead({...newLead, name: e.target.value})} className="w-full p-2 border rounded mb-2" />
+            <input type="email" placeholder="Email" value={newLead.email} onChange={e => setNewLead({...newLead, email: e.target.value})} className="w-full p-2 border rounded mb-2" />
+            <input type="tel" placeholder="Phone" value={newLead.phone} onChange={e => setNewLead({...newLead, phone: e.target.value})} className="w-full p-2 border rounded mb-2" />
+            <input type="text" placeholder="Program" value={newLead.program} onChange={e => setNewLead({...newLead, program: e.target.value})} className="w-full p-2 border rounded mb-4" />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowAddLeadModal(false)} className="px-4 py-2 border rounded">Cancel</button>
+              <button onClick={addLead} className="px-4 py-2 bg-blue-600 text-white rounded">Save</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Subscription Modal */}
+      {showSubscriptionModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6">
+            <h2 className="text-2xl font-bold mb-4">Choose a Plan</h2>
+            <div className="space-y-3">
+              <button onClick={() => subscribe('daily')} className="w-full p-3 border rounded flex justify-between items-center hover:bg-gray-50">Daily Access <span className="font-bold">K10</span></button>
+              <button onClick={() => subscribe('weekly')} className="w-full p-3 border rounded flex justify-between items-center hover:bg-gray-50">Weekly Access <span className="font-bold">K40</span></button>
+              <button onClick={() => subscribe('monthly')} className="w-full p-3 border rounded flex justify-between items-center hover:bg-gray-50">Monthly Access <span className="font-bold">K150</span></button>
+            </div>
+            <p className="text-xs text-gray-500 mt-4 text-center">Quick Admission and main Dashboard remain free forever.</p>
+            <button onClick={() => setShowSubscriptionModal(false)} className="mt-4 text-gray-500 w-full">Close</button>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Call Button */}
+      {recruiter?.phone && (
+        <button onClick={() => window.location.href = `tel:${recruiter.phone}`} className="fixed bottom-6 right-6 bg-green-600 text-white p-4 rounded-full shadow-lg z-50">
+          <Phone size={24} />
+        </button>
+      )}
 
       <FileUploadModal
         isOpen={importModalOpen}

@@ -3,10 +3,14 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { supabase } from '@/lib/supabase/client';
+import toast from 'react-hot-toast';
 
 export default function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
+  const [demoForm, setDemoForm] = useState({ name: '', email: '', organization: '' });
+  const [submitting, setSubmitting] = useState(false);
 
   const testimonials = [
     {
@@ -87,13 +91,37 @@ export default function LandingPage() {
     return () => statObserver.disconnect();
   }, []);
 
+  const handleDemoSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!demoForm.name || !demoForm.email || !demoForm.organization) {
+      toast.error('Please fill all fields');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { error } = await supabase.from('demo_requests').insert({
+        name: demoForm.name,
+        email: demoForm.email,
+        organization: demoForm.organization,
+        created_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+      toast.success('Demo request sent! We will contact you soon.');
+      setDemoForm({ name: '', email: '', organization: '' });
+    } catch (err) {
+      toast.error('Failed to send request. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
-    <div className="bg-white text-gray-800">
+    <div className="bg-white text-gray-800 overflow-x-hidden">
       {/* ========== HEADER ========== */}
       <header className="sticky top-0 z-50 bg-white/85 backdrop-blur-md border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <div>
-            <h1 className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-navy to-teal bg-clip-text text-transparent">
+            <h1 className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-blue-900 to-teal-600 bg-clip-text text-transparent">
               Global Smart Student Recruitment
             </h1>
             <p className="text-xs text-gray-500">Powered by Dr Moono Business Development Consultancy</p>
@@ -101,16 +129,16 @@ export default function LandingPage() {
 
           {/* Desktop nav */}
           <nav className="hidden md:flex gap-8 text-sm font-medium">
-            <a href="#home" className="hover:text-teal transition">Home</a>
-            <a href="#features" className="hover:text-teal transition">Solutions</a>
-            <a href="#how-it-works" className="hover:text-teal transition">How it works</a>
-            <a href="#testimonials" className="hover:text-teal transition">Testimonials</a>
-            <a href="#pricing" className="hover:text-teal transition">Pricing</a>
-            <a href="#contact" className="hover:text-teal transition">Contact</a>
+            <a href="#home" className="hover:text-teal-600 transition">Home</a>
+            <a href="#features" className="hover:text-teal-600 transition">Solutions</a>
+            <a href="#how-it-works" className="hover:text-teal-600 transition">How it works</a>
+            <a href="#testimonials" className="hover:text-teal-600 transition">Testimonials</a>
+            <a href="#pricing" className="hover:text-teal-600 transition">Pricing</a>
+            <a href="#contact" className="hover:text-teal-600 transition">Contact</a>
           </nav>
 
           <div className="hidden md:flex gap-3">
-            <Link href="/signup" className="bg-teal text-white px-5 py-2 rounded-full font-semibold hover:shadow-lg transition">
+            <Link href="/signup" className="bg-teal-600 text-white px-5 py-2 rounded-full font-semibold hover:shadow-lg transition">
               Sign Up Free
             </Link>
             <Link href="/login" className="border border-gray-300 px-5 py-2 rounded-full hover:bg-gray-50 transition">
@@ -127,19 +155,19 @@ export default function LandingPage() {
         {/* Mobile menu */}
         {mobileMenuOpen && (
           <div className="md:hidden bg-white/95 backdrop-blur border-t py-4 px-6 flex flex-col gap-4">
-            <a href="#home" onClick={() => setMobileMenuOpen(false)} className="hover:text-teal">Home</a>
-            <a href="#features" onClick={() => setMobileMenuOpen(false)} className="hover:text-teal">Solutions</a>
-            <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)} className="hover:text-teal">How it works</a>
-            <a href="#testimonials" onClick={() => setMobileMenuOpen(false)} className="hover:text-teal">Testimonials</a>
-            <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="hover:text-teal">Pricing</a>
-            <Link href="/signup" onClick={() => setMobileMenuOpen(false)} className="bg-teal text-white px-4 py-2 rounded-full text-center">
+            <a href="#home" onClick={() => setMobileMenuOpen(false)} className="hover:text-teal-600">Home</a>
+            <a href="#features" onClick={() => setMobileMenuOpen(false)} className="hover:text-teal-600">Solutions</a>
+            <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)} className="hover:text-teal-600">How it works</a>
+            <a href="#testimonials" onClick={() => setMobileMenuOpen(false)} className="hover:text-teal-600">Testimonials</a>
+            <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="hover:text-teal-600">Pricing</a>
+            <Link href="/signup" onClick={() => setMobileMenuOpen(false)} className="bg-teal-600 text-white px-4 py-2 rounded-full text-center">
               Sign Up Free
             </Link>
           </div>
         )}
       </header>
 
-      {/* ========== HERO ========== */}
+      {/* ========== HERO with BOLD STATEMENT ========== */}
       <section id="home" className="relative h-screen flex items-center justify-center text-center text-white overflow-hidden">
         <div className="absolute inset-0 z-0">
           <Image
@@ -149,12 +177,12 @@ export default function LandingPage() {
             className="object-cover"
             priority
           />
-          <div className="absolute inset-0 bg-gradient-to-br from-navy/85 to-teal/75"></div>
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-900/85 to-teal-600/75"></div>
         </div>
 
         <div className="relative z-10 max-w-4xl px-6 animate-[fadeInUp_1s_ease-out]">
           <h1 className="text-5xl md:text-7xl font-extrabold mb-4 leading-tight">
-            Global Smart <span className="text-teal">Student Recruitment</span>
+            Welcome to the <span className="text-teal-300">Future</span> of Student Recruitment
           </h1>
           <p className="text-xl md:text-2xl mb-6 font-light">
             Where every Lead Matters in Accessing Quality and Affordable Education
@@ -164,32 +192,32 @@ export default function LandingPage() {
           <div className="flex flex-col sm:flex-row gap-5 justify-center">
             <Link
               href="/signup"
-              className="bg-gradient-to-r from-teal to-teal/80 text-white px-8 py-4 rounded-full font-bold text-lg inline-flex items-center justify-center gap-2 shadow-xl hover:scale-105 transition"
+              className="bg-gradient-to-r from-teal-500 to-teal-700 text-white px-8 py-4 rounded-full font-bold text-lg inline-flex items-center justify-center gap-2 shadow-xl hover:scale-105 transition"
             >
-              <i className="fas fa-rocket"></i> Start Free Trial
+               Start Free Trial
             </Link>
             <a
               href="#demo"
-              className="border-2 border-white px-8 py-4 rounded-full font-semibold hover:bg-white hover:text-navy transition inline-flex items-center justify-center gap-2"
+              className="border-2 border-white px-8 py-4 rounded-full font-semibold hover:bg-white hover:text-blue-900 transition inline-flex items-center justify-center gap-2"
             >
-              <i className="fas fa-play-circle"></i> Watch 2-min Demo
+              ▶ Watch 2-min Demo
             </a>
           </div>
 
           <div className="mt-10 flex flex-wrap justify-center gap-6 text-sm">
-            <span className="flex items-center gap-2"><i className="fas fa-check-circle text-teal"></i> 50+ Universities</span>
-            <span className="flex items-center gap-2"><i className="fas fa-check-circle text-teal"></i> 12,000+ Students</span>
-            <span className="flex items-center gap-2"><i className="fas fa-check-circle text-teal"></i> 18 Countries</span>
+            <span className="flex items-center gap-2"><span className="text-teal-300">✓</span> 50+ Universities</span>
+            <span className="flex items-center gap-2"><span className="text-teal-300">✓</span> 12,000+ Students</span>
+            <span className="flex items-center gap-2"><span className="text-teal-300">✓</span> 18 Countries</span>
           </div>
         </div>
 
         <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 animate-bounce">
-          <a href="#features" className="text-white text-2xl"><i className="fas fa-chevron-down"></i></a>
+          <a href="#features" className="text-white text-2xl">↓</a>
         </div>
       </section>
 
       {/* ========== PROBLEM / VALUE ========== */}
-      <section className="py-24 text-center bg-lightgray">
+      <section className="py-24 text-center bg-gray-50">
         <div className="max-w-6xl mx-auto px-6">
           <h2 className="text-4xl font-bold mb-4">Smart Recruitment. Real Results. Zero Wasted Leads.</h2>
           <p className="text-gray-600 text-lg max-w-2xl mx-auto mb-12">
@@ -199,10 +227,10 @@ export default function LandingPage() {
             {[
               { icon: "database", title: "Manual recruitment wastes leads", desc: "Automated pipelines with 87% conversion uplift." },
               { icon: "brain", title: "Low-quality applicants", desc: "AI filtering and matching to ideal candidates." },
-              { icon: "globe-americas", title: "Limited reach", desc: "Global network across 18+ countries." },
+              { icon: "globe", title: "Limited reach", desc: "Global network across 18+ countries." },
             ].map((item) => (
-              <div key={item.title} className="bg-white/95 backdrop-blur p-8 rounded-2xl shadow-md hover:shadow-xl transition-all hover:-translate-y-1 border border-white/30">
-                <i className={`fas fa-${item.icon} text-4xl text-teal mb-4`}></i>
+              <div key={item.title} className="bg-white p-8 rounded-2xl shadow-md hover:shadow-xl transition-all hover:-translate-y-1">
+                <div className="text-4xl text-teal-600 mb-4">📊</div>
                 <h3 className="text-xl font-bold mb-2">{item.title}</h3>
                 <p className="text-gray-500">{item.desc}</p>
               </div>
@@ -215,21 +243,21 @@ export default function LandingPage() {
       <section id="features" className="py-24 section-fade opacity-0 translate-y-8 transition-all duration-700">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
-            <span className="text-teal font-semibold tracking-wide">POWERFUL CAPABILITIES</span>
+            <span className="text-teal-600 font-semibold tracking-wide">POWERFUL CAPABILITIES</span>
             <h2 className="text-4xl md:text-5xl font-bold mt-2">Everything you need to scale recruitment</h2>
             <p className="text-gray-500 max-w-2xl mx-auto mt-4">From lead capture to enrollment — one intelligent platform.</p>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             {[
-              { icon: "robot", title: "AI-Powered Lead Matching", desc: "Smart algorithm matches students to best-fit programs." },
-              { icon: "graduation-cap", title: "Affordable Education Pathways", desc: "Scholarship & financial aid integration." },
-              { icon: "chart-line", title: "Real-Time Analytics", desc: "Dashboard with ROI, conversion funnels." },
-              { icon: "building", title: "Global University Network", desc: "Partner with 50+ accredited institutions." },
-              { icon: "file-alt", title: "Automated Application Support", desc: "End-to-end document management." },
-              { icon: "passport", title: "Visa & Compliance Guidance", desc: "Regulatory support for international students." },
+              { icon: "🤖", title: "AI-Powered Lead Matching", desc: "Smart algorithm matches students to best-fit programs." },
+              { icon: "🎓", title: "Affordable Education Pathways", desc: "Scholarship & financial aid integration." },
+              { icon: "📈", title: "Real-Time Analytics", desc: "Dashboard with ROI, conversion funnels." },
+              { icon: "🏛️", title: "Global University Network", desc: "Partner with 50+ accredited institutions." },
+              { icon: "📄", title: "Automated Application Support", desc: "End-to-end document management." },
+              { icon: "🛂", title: "Visa & Compliance Guidance", desc: "Regulatory support for international students." },
             ].map((feat) => (
               <div key={feat.title} className="flex gap-4 p-6 rounded-xl hover:shadow-lg transition group">
-                <i className={`fas fa-${feat.icon} text-3xl text-teal group-hover:scale-110 transition`}></i>
+                <div className="text-3xl group-hover:scale-110 transition">{feat.icon}</div>
                 <div>
                   <h3 className="text-xl font-bold">{feat.title}</h3>
                   <p className="text-gray-500">{feat.desc}</p>
@@ -241,19 +269,19 @@ export default function LandingPage() {
       </section>
 
       {/* ========== HOW IT WORKS ========== */}
-      <section id="how-it-works" className="py-24 bg-navy text-white section-fade opacity-0 translate-y-8 transition-all duration-700">
+      <section id="how-it-works" className="py-24 bg-blue-900 text-white section-fade opacity-0 translate-y-8 transition-all duration-700">
         <div className="max-w-6xl mx-auto px-6 text-center">
           <h2 className="text-4xl font-bold mb-4">How It Works</h2>
           <p className="text-gray-300 mb-12">Four simple steps to global student recruitment success</p>
           <div className="grid md:grid-cols-4 gap-8">
             {[
-              { icon: "user-plus", title: "Capture Leads", desc: "Multi-channel lead generation forms & landing pages." },
-              { icon: "microchip", title: "AI Matching", desc: "Predictive scoring and course matching." },
-              { icon: "file-signature", title: "Smart Applications", desc: "Auto-filled applications, document uploads." },
-              { icon: "user-check", title: "Enrollment & Tracking", desc: "Real-time status and commission tracking." },
+              { icon: "👥", title: "Capture Leads", desc: "Multi-channel lead generation forms & landing pages." },
+              { icon: "🧠", title: "AI Matching", desc: "Predictive scoring and course matching." },
+              { icon: "✍️", title: "Smart Applications", desc: "Auto-filled applications, document uploads." },
+              { icon: "✅", title: "Enrollment & Tracking", desc: "Real-time status and commission tracking." },
             ].map((step) => (
               <div key={step.title}>
-                <i className={`fas fa-${step.icon} text-4xl text-teal mb-3`}></i>
+                <div className="text-4xl mb-3">{step.icon}</div>
                 <h3 className="font-bold text-xl">{step.title}</h3>
                 <p className="text-sm">{step.desc}</p>
               </div>
@@ -268,12 +296,12 @@ export default function LandingPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
             {[
               { count: 12400, label: "Students Placed", suffix: "+" },
-              { count: 87, label: "% Conversion Rate", suffix: "" },
+              { count: 87, label: "Conversion Rate", suffix: "%" },
               { count: 50, label: "Partner Universities", suffix: "+" },
               { count: 18, label: "Countries", suffix: "" },
             ].map((stat) => (
               <div key={stat.label}>
-                <div className="text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-navy to-teal bg-clip-text text-transparent" data-count={stat.count}>
+                <div className="text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-blue-900 to-teal-600 bg-clip-text text-transparent" data-count={stat.count}>
                   0
                 </div>
                 <p className="text-gray-600 font-medium">{stat.label}</p>
@@ -284,7 +312,7 @@ export default function LandingPage() {
       </section>
 
       {/* ========== TESTIMONIALS ========== */}
-      <section id="testimonials" className="py-24 bg-lightgray section-fade opacity-0 translate-y-8 transition-all duration-700">
+      <section id="testimonials" className="py-24 bg-gray-50 section-fade opacity-0 translate-y-8 transition-all duration-700">
         <div className="max-w-5xl mx-auto px-6 text-center">
           <h2 className="text-4xl font-bold mb-4">Trusted by Education Leaders</h2>
           <p className="text-gray-500 mb-12">Real success stories from our partners</p>
@@ -293,10 +321,10 @@ export default function LandingPage() {
               {testimonials.map((t, idx) => (
                 <div key={idx} className="w-full flex-shrink-0 px-4">
                   <div className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition">
-                    <i className="fas fa-quote-left text-teal text-3xl mb-4"></i>
+                    <div className="text-teal-600 text-3xl mb-4">“</div>
                     <p className="text-lg italic">"{t.quote}"</p>
                     <div className="mt-6 flex items-center justify-center gap-3">
-                      <img src={t.avatar} className="w-12 h-12 rounded-full" alt={t.name} />
+                      <img src={t.avatar} className="w-12 h-12 rounded-full object-cover" alt={t.name} />
                       <div>
                         <strong>{t.name}</strong>
                         <p className="text-sm">{t.title}</p>
@@ -311,7 +339,7 @@ export default function LandingPage() {
                 <button
                   key={i}
                   onClick={() => setCurrentTestimonial(i)}
-                  className={`h-3 rounded-full transition-all duration-300 ${currentTestimonial === i ? 'bg-teal w-8' : 'bg-gray-400 w-3'}`}
+                  className={`h-3 rounded-full transition-all duration-300 ${currentTestimonial === i ? 'bg-teal-600 w-8' : 'bg-gray-400 w-3'}`}
                 />
               ))}
             </div>
@@ -329,24 +357,24 @@ export default function LandingPage() {
               <h3 className="text-2xl font-bold">Starter</h3>
               <p className="text-4xl font-bold mt-4">$0<span className="text-base font-normal">/month</span></p>
               <ul className="mt-6 space-y-3 text-left">
-                <li><i className="fas fa-check text-teal mr-2"></i> Up to 500 leads/month</li>
-                <li><i className="fas fa-check text-teal mr-2"></i> Basic AI matching</li>
-                <li><i className="fas fa-check text-teal mr-2"></i> Email support</li>
+                <li>✓ Up to 500 leads/month</li>
+                <li>✓ Basic AI matching</li>
+                <li>✓ Email support</li>
               </ul>
-              <Link href="/signup" className="mt-8 inline-block border border-teal text-teal px-6 py-2 rounded-full font-semibold hover:bg-teal hover:text-white transition">
+              <Link href="/signup" className="mt-8 inline-block border border-teal-600 text-teal-600 px-6 py-2 rounded-full font-semibold hover:bg-teal-600 hover:text-white transition">
                 Get Started
               </Link>
             </div>
-            <div className="border-2 border-teal rounded-2xl p-8 shadow-xl relative">
-              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-teal text-white px-4 py-1 rounded-full text-sm">Most Popular</div>
+            <div className="border-2 border-teal-600 rounded-2xl p-8 shadow-xl relative">
+              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-teal-600 text-white px-4 py-1 rounded-full text-sm">Most Popular</div>
               <h3 className="text-2xl font-bold">Professional</h3>
               <p className="text-4xl font-bold mt-4">$299<span className="text-base font-normal">/month</span></p>
               <ul className="mt-6 space-y-3 text-left">
-                <li><i className="fas fa-check text-teal mr-2"></i> Unlimited leads</li>
-                <li><i className="fas fa-check text-teal mr-2"></i> Advanced AI + analytics</li>
-                <li><i className="fas fa-check text-teal mr-2"></i> Priority support + onboarding</li>
+                <li>✓ Unlimited leads</li>
+                <li>✓ Advanced AI + analytics</li>
+                <li>✓ Priority support + onboarding</li>
               </ul>
-              <Link href="/signup" className="mt-8 inline-block bg-teal text-white px-6 py-2 rounded-full font-semibold hover:shadow-lg transition">
+              <Link href="/signup" className="mt-8 inline-block bg-teal-600 text-white px-6 py-2 rounded-full font-semibold hover:shadow-lg transition">
                 Start 14-day trial
               </Link>
             </div>
@@ -354,9 +382,9 @@ export default function LandingPage() {
               <h3 className="text-2xl font-bold">Enterprise</h3>
               <p className="text-4xl font-bold mt-4">Custom</p>
               <ul className="mt-6 space-y-3 text-left">
-                <li><i className="fas fa-check text-teal mr-2"></i> Dedicated account manager</li>
-                <li><i className="fas fa-check text-teal mr-2"></i> API access & SSO</li>
-                <li><i className="fas fa-check text-teal mr-2"></i> Custom integrations</li>
+                <li>✓ Dedicated account manager</li>
+                <li>✓ API access & SSO</li>
+                <li>✓ Custom integrations</li>
               </ul>
               <a href="#contact" className="mt-8 inline-block border border-gray-400 px-6 py-2 rounded-full font-semibold hover:bg-gray-100 transition">
                 Contact Sales
@@ -366,28 +394,46 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ========== LEAD CAPTURE / CTA ========== */}
-      <section id="contact" className="py-24 bg-gradient-to-r from-navy to-teal text-white section-fade opacity-0 translate-y-8 transition-all duration-700">
+      {/* ========== DEMO REQUEST (Backend integrated) ========== */}
+      <section id="contact" className="py-24 bg-gradient-to-r from-blue-900 to-teal-600 text-white section-fade opacity-0 translate-y-8 transition-all duration-700">
         <div className="max-w-5xl mx-auto px-6 text-center">
           <h2 className="text-4xl font-bold mb-4">Ready to transform your recruitment?</h2>
           <p className="text-xl mb-8 opacity-90">Join 50+ universities already growing with us.</p>
           <div className="bg-white/10 backdrop-blur rounded-2xl p-8 max-w-xl mx-auto">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                alert("Demo request sent! We'll contact you soon.");
-              }}
-              className="flex flex-col gap-4"
-            >
-              <input type="text" placeholder="Full name" className="px-5 py-3 rounded-full text-gray-800" required />
-              <input type="email" placeholder="Work email" className="px-5 py-3 rounded-full text-gray-800" required />
-              <select className="px-5 py-3 rounded-full text-gray-800">
-                <option>University / Organization</option>
+            <form onSubmit={handleDemoSubmit} className="flex flex-col gap-4">
+              <input
+                type="text"
+                placeholder="Full name"
+                className="px-5 py-3 rounded-full text-gray-800"
+                value={demoForm.name}
+                onChange={(e) => setDemoForm({ ...demoForm, name: e.target.value })}
+                required
+              />
+              <input
+                type="email"
+                placeholder="Work email"
+                className="px-5 py-3 rounded-full text-gray-800"
+                value={demoForm.email}
+                onChange={(e) => setDemoForm({ ...demoForm, email: e.target.value })}
+                required
+              />
+              <select
+                className="px-5 py-3 rounded-full text-gray-800"
+                value={demoForm.organization}
+                onChange={(e) => setDemoForm({ ...demoForm, organization: e.target.value })}
+                required
+              >
+                <option value="">Select organization type</option>
+                <option>University / College</option>
                 <option>Recruitment Agency</option>
                 <option>Affiliate Partner</option>
               </select>
-              <button type="submit" className="bg-white text-navy font-bold py-3 rounded-full hover:shadow-xl transition">
-                Request Demo →
+              <button
+                type="submit"
+                disabled={submitting}
+                className="bg-white text-blue-900 font-bold py-3 rounded-full hover:shadow-xl transition disabled:opacity-50"
+              >
+                {submitting ? 'Sending...' : 'Request Demo →'}
               </button>
             </form>
             <p className="text-xs mt-4 opacity-80">No spam. Unsubscribe anytime.</p>
@@ -402,16 +448,16 @@ export default function LandingPage() {
             <h3 className="text-white font-bold text-xl">Global Smart Student Recruitment</h3>
             <p className="text-sm mt-2">Powered by Dr Moono Business Development Consultancy</p>
             <div className="flex gap-4 mt-4">
-              <a href="#" className="hover:text-teal"><i className="fab fa-linkedin-in"></i></a>
-              <a href="#" className="hover:text-teal"><i className="fab fa-twitter"></i></a>
-              <a href="#" className="hover:text-teal"><i className="fab fa-facebook-f"></i></a>
+              <a href="#" className="hover:text-teal-400">LinkedIn</a>
+              <a href="#" className="hover:text-teal-400">Twitter</a>
+              <a href="#" className="hover:text-teal-400">Facebook</a>
             </div>
           </div>
           <div>
             <h4 className="font-semibold text-white">Platform</h4>
             <ul className="mt-2 space-y-1 text-sm">
-              <li><a href="#features" className="hover:text-teal">Features</a></li>
-              <li><a href="#pricing" className="hover:text-teal">Pricing</a></li>
+              <li><a href="#features" className="hover:text-teal-400">Features</a></li>
+              <li><a href="#pricing" className="hover:text-teal-400">Pricing</a></li>
               <li><a href="#">Demo</a></li>
             </ul>
           </div>

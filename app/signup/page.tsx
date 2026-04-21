@@ -4,12 +4,15 @@ import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
-import { ArrowLeft, Eye, EyeOff, UserPlus, Loader2, CheckCircle, Building2 } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, UserPlus, Loader2, CheckCircle, Building2, Briefcase, Users, GraduationCap } from 'lucide-react';
 
-type SignupRole = 'student' | 'recruiter' | 'affiliate';
+type SignupRole = 'student' | 'recruiter' | 'affiliate' | 'institution_admin' | 'consultancy_admin';
 
 function SignupContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Form fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -18,34 +21,37 @@ function SignupContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [institutions, setInstitutions] = useState<any[]>([]);
-  const [selectedInstitution, setSelectedInstitution] = useState('');
-  const [loadingInstitutions, setLoadingInstitutions] = useState(false);
-  const [referralCode, setReferralCode] = useState('');
-  const searchParams = useSearchParams();
 
+  // Role-specific fields
+  const [institutions, setInstitutions] = useState<any[]>([]);
+  const [consultancies, setConsultancies] = useState<any[]>([]);
+  const [selectedInstitution, setSelectedInstitution] = useState('');
+  const [selectedConsultancy, setSelectedConsultancy] = useState('');
+  const [loadingOrgs, setLoadingOrgs] = useState(false);
+  const [referralCode, setReferralCode] = useState('');
+
+  // Get referral code from URL
   useEffect(() => {
     const ref = searchParams.get('ref');
     if (ref) {
       setReferralCode(ref);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('dmdbc_referral_code', ref);
-      }
+      localStorage.setItem('dmdbc_referral_code', ref);
     }
   }, [searchParams]);
 
-  // Fetch institutions once and reuse locally
+  // Fetch institutions and consultancies for admin roles
   useEffect(() => {
-    setLoadingInstitutions(true);
-    supabase
-      .from('institutions')
-      .select('id, institution_name, institution_code')
-      .eq('status', 'active')
-      .order('institution_name')
-      .then(({ data, error }) => {
-        if (!error && data) setInstitutions(data);
-        setLoadingInstitutions(false);
-      });
+    const fetchOrganizations = async () => {
+      setLoadingOrgs(true);
+      const [instRes, consRes] = await Promise.all([
+        supabase.from('institutions').select('id, institution_name, institution_code').eq('status', 'active').order('institution_name'),
+        supabase.from('consultancies').select('id, consultancy_name').order('consultancy_name')
+      ]);
+      if (!instRes.error && instRes.data) setInstitutions(instRes.data);
+      if (!consRes.error && consRes.data) setConsultancies(consRes.data);
+      setLoadingOrgs(false);
+    };
+    fetchOrganizations();
   }, []);
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -62,24 +68,34 @@ function SignupContent() {
       setError('Invalid phone number. Use 10-15 digits, optional + prefix.');
       return;
     }
+
+    // Validate role-specific required fields
     if (selectedRole === 'affiliate' && !selectedInstitution) {
-      setError('Please select an institution');
+      setError('Please select an institution for affiliate account');
       return;
     }
+    if (selectedRole === 'institution_admin' && !selectedInstitution) {
+      setError('Please select an institution to manage');
+      return;
+    }
+    if (selectedRole === 'consultancy_admin' && !selectedConsultancy) {
+      setError('Please select a consultancy to manage');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
+      // Determine referral (only for recruiter)
       let referredByUserId: string | null = null;
-      if (referralCode) {
+      if (selectedRole === 'recruiter' && referralCode) {
         const { data: refUser, error: refError } = await supabase
           .from('recruiters')
           .select('user_id')
           .eq('referral_code', referralCode)
           .maybeSingle();
-
-        if (refError) throw refError;
-        referredByUserId = refUser?.user_id || null;
+        if (!refError && refUser) referredByUserId = refUser.user_id;
       }
 
       const campaign = searchParams.get('utm_campaign');
@@ -91,9 +107,10 @@ function SignupContent() {
         options: {
           data: {
             full_name: fullName,
-            phone: phone,
+            phone,
             role: selectedRole,
             institution_id: selectedInstitution || null,
+            consultancy_id: selectedConsultancy || null,
             referred_by: referredByUserId,
             signup_source: 'signup_page',
             campaign: campaign || null,
@@ -106,7 +123,7 @@ function SignupContent() {
 
       const userId = authData.user.id;
 
-      // Complete profile/recruiter/lead with service role to bypass RLS
+      // Call API to complete profile (creates recruiter/affiliate/institution_admin records)
       const completeRes = await fetch('/api/signup/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -117,10 +134,12 @@ function SignupContent() {
           email,
           phone,
           institution_id: selectedInstitution || null,
+          consultancy_id: selectedConsultancy || null,
           referred_by: referredByUserId,
           referral_code: referralCode || null,
         }),
       });
+
       if (!completeRes.ok) {
         const txt = await completeRes.text().catch(() => '');
         let msg = 'Failed to finalize signup';
@@ -134,16 +153,30 @@ function SignupContent() {
       }
 
       alert('Account created successfully! Please check your email to confirm if required.');
+
+      // Redirect based on role and session
       if (!authData.session) {
         router.push('/login?checkEmail=1');
-      } else if (selectedRole === 'student') {
-        router.push('/student/dashboard');
-      } else if (selectedRole === 'recruiter') {
-        router.push('/signup/nda');
-      } else if (selectedRole === 'affiliate') {
-        router.push('/affiliate/dashboard');
       } else {
-        router.push('/login');
+        switch (selectedRole) {
+          case 'student':
+            router.push('/student/dashboard');
+            break;
+          case 'recruiter':
+            router.push('/signup/nda');
+            break;
+          case 'affiliate':
+            router.push('/affiliate/dashboard');
+            break;
+          case 'institution_admin':
+            router.push('/institution/dashboard');
+            break;
+          case 'consultancy_admin':
+            router.push('/consultancy/dashboard');
+            break;
+          default:
+            router.push('/dashboard');
+        }
       }
     } catch (err: any) {
       console.error('Signup error:', err);
@@ -153,30 +186,34 @@ function SignupContent() {
     }
   };
 
-  const roleOptions: Array<{ value: SignupRole; label: string; description: string }> = [
-    { value: 'student', label: 'Student', description: 'Apply to programs, track applications' },
-    { value: 'recruiter', label: 'Recruiter', description: 'Earn commissions by recruiting students' },
-    { value: 'affiliate', label: 'Affiliate', description: 'Promote programs and earn rewards' },
+  const roleOptions: Array<{ value: SignupRole; label: string; description: string; icon: JSX.Element }> = [
+    { value: 'student', label: 'Student', description: 'Apply to programs, track applications', icon: <GraduationCap size={18} /> },
+    { value: 'recruiter', label: 'Recruiter', description: 'Earn commissions by recruiting students', icon: <Users size={18} /> },
+    { value: 'affiliate', label: 'Affiliate', description: 'Promote programs and earn rewards', icon: <Briefcase size={18} /> },
+    { value: 'institution_admin', label: 'Institution Admin', description: 'Manage programs, applications, payments', icon: <Building2 size={18} /> },
+    { value: 'consultancy_admin', label: 'Consultancy Admin', description: 'Oversee multiple institutions', icon: <Building2 size={18} /> },
   ];
 
-  const getRoleIcon = (roleValue: string) => {
+  const getRoleIcon = (roleValue: SignupRole) => {
     switch (roleValue) {
       case 'student': return '🎓';
       case 'recruiter': return '🤝';
       case 'affiliate': return '🔗';
+      case 'institution_admin': return '🏛️';
+      case 'consultancy_admin': return '🏢';
       default: return '👤';
     }
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
-      <div className="max-w-2xl w-full">
+      <div className="max-w-3xl w-full">
         <div className="text-center mb-8">
           <div className="w-20 h-20 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
             <Building2 className="w-10 h-10 text-white" />
           </div>
           <h1 className="text-4xl font-bold text-gray-900">Create Account</h1>
-          <p className="text-gray-500 mt-2">Join the DMBDC ecosystem</p>
+          <p className="text-gray-500 mt-2">Join the Global Smart Recruitment ecosystem</p>
         </div>
 
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-gray-200 overflow-hidden">
@@ -237,16 +274,17 @@ function SignupContent() {
                 </div>
               </div>
 
+              {/* Referral code (only shown if present and role = recruiter) */}
               {referralCode && (
                 <div className="rounded-xl bg-blue-50 border border-blue-200 p-4 text-blue-900">
-                  Referred by code: <span className="font-semibold">{referralCode}</span>. This referral will be kept with your account.
+                  Referred by code: <span className="font-semibold">{referralCode}</span>. This referral will be credited to the recruiter.
                 </div>
               )}
 
               {/* Role Selection */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">I am signing up as *</label>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                   {roleOptions.map((role) => (
                     <button
                       key={role.value}
@@ -271,14 +309,14 @@ function SignupContent() {
                 </div>
               </div>
 
-              {/* Institution Selection */}
-              {selectedRole === 'affiliate' && (
+              {/* Institution Selection (for affiliate, institution_admin) */}
+              {(selectedRole === 'affiliate' || selectedRole === 'institution_admin') && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Select Institution *</label>
-                  {loadingInstitutions ? (
-                    <div className="flex items-center gap-2 text-gray-500">
-                      <Loader2 className="w-4 h-4 animate-spin" /> Loading institutions...
-                    </div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {selectedRole === 'affiliate' ? 'Select Institution to promote *' : 'Select Institution to manage *'}
+                  </label>
+                  {loadingOrgs ? (
+                    <div className="flex items-center gap-2 text-gray-500"><Loader2 className="w-4 h-4 animate-spin" /> Loading institutions...</div>
                   ) : institutions.length > 0 ? (
                     <select
                       value={selectedInstitution}
@@ -295,6 +333,32 @@ function SignupContent() {
                     </select>
                   ) : (
                     <p className="text-red-500 text-sm">No active institutions found. Contact administrator.</p>
+                  )}
+                </div>
+              )}
+
+              {/* Consultancy Selection (for consultancy_admin) */}
+              {selectedRole === 'consultancy_admin' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Select Consultancy to manage *</label>
+                  {loadingOrgs ? (
+                    <div className="flex items-center gap-2 text-gray-500"><Loader2 className="w-4 h-4 animate-spin" /> Loading consultancies...</div>
+                  ) : consultancies.length > 0 ? (
+                    <select
+                      value={selectedConsultancy}
+                      onChange={(e) => setSelectedConsultancy(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                      required
+                    >
+                      <option value="">-- Select a consultancy --</option>
+                      {consultancies.map((cons) => (
+                        <option key={cons.id} value={cons.id}>
+                          {cons.consultancy_name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="text-red-500 text-sm">No consultancies found. Contact administrator.</p>
                   )}
                 </div>
               )}
