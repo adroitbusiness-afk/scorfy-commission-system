@@ -3,6 +3,8 @@ import { supabase } from '@/lib/supabase/client';
 import { parseFile } from '@/lib/parseFile'; // your existing file parser
 import { v4 as uuidv4 } from 'uuid';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase/client';
 import { analyzeLead } from '@/lib/aiLeadEngine';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   const { data: leads, error } = await supabase
     .from('leads')
